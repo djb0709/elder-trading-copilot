@@ -104,6 +104,36 @@ def build_prompt(query, retrieved_docs, dashboard_context=None):
 
     prompt = ""
 
+    # Always include system methodology so LLM can explain calculations
+    cap_str = f"${dashboard_context['params']['capital']:,}" if dashboard_context else "$10,000"
+    pos_str = f"{dashboard_context['params']['position_pct']}%" if dashboard_context else "100%"
+    prompt += (
+        "## System Methodology (how our backtest engine works)\n"
+        "Trading Logic (Elder Triple Screen):\n"
+        "- Screen 1 (Trend): EMA_short > EMA_long → uptrend; < → downtrend\n"
+        "- Screen 2 (Momentum): MACD line > Signal line → bullish momentum\n"
+        "- Screen 3 (Entry): Long when Close > N-day highest high; "
+        "Short when Close < N-day lowest low\n"
+        "- Exit: Long closed when RSI > upper threshold (overbought); "
+        "Short closed when RSI < lower threshold (oversold)\n"
+        f"- Position sizing: {pos_str} of available cash per trade, "
+        "shares = int(cash × position_pct / 100 // price)\n\n"
+        "Indicator Calculations:\n"
+        "- EMA: Exponential Moving Average = ewm(span=N, adjust=False)\n"
+        "- MACD: MACD_line = EMA(12) - EMA(26); Signal = EMA(9) of MACD_line\n"
+        "- RSI: RSI = 100 - 100/(1 + avg_gain/avg_loss) over 14-day rolling window\n\n"
+        "Performance Metrics:\n"
+        f"- Starting capital: {cap_str}\n"
+        f"- Total Return = (final_equity - starting_capital) / starting_capital × 100%\n"
+        "- Sharpe Ratio = (mean(daily_returns) / std(daily_returns)) × sqrt(252). "
+        "This is the annualized Sharpe with risk-free rate assumed to be 0. "
+        "daily_returns = daily percentage change of the equity curve.\n"
+        "- Max Drawdown = max((peak - equity) / peak) × 100%. "
+        "Peak is the running maximum of the equity curve.\n"
+        "- Trade Count = total number of long entries + short entries\n"
+        "- Risk Level: Low if MaxDD < 15%, Medium if < 30%, High if >= 30%\n\n"
+    )
+
     if dashboard_context:
         p = dashboard_context["params"]
         m = dashboard_context["metrics"]
@@ -112,9 +142,15 @@ def build_prompt(query, retrieved_docs, dashboard_context=None):
             f"- Ticker: {dashboard_context['ticker']}\n"
             f"- Date Range: {dashboard_context['start_date']} to {dashboard_context['end_date']}\n"
             f"- Strategy: Elder Triple Screen\n"
-            f"- Parameters: EMA={p['win_short']}/{p['win_long']}, "
-            f"RSI={p['rsi_lower']}-{p['rsi_upper']}, "
-            f"Breakout={p['breakout_window']}\n\n"
+            f"- Parameters:\n"
+            f"  - EMA Short Window: {p['win_short']} days (tactical trend)\n"
+            f"  - EMA Long Window: {p['win_long']} days (strategic trend)\n"
+            f"  - RSI Oversold: {p['rsi_lower']} / Overbought: {p['rsi_upper']}\n"
+            f"  - Breakout Window: {p['breakout_window']} days "
+            f"(enter long when price exceeds {p['breakout_window']}-day high, "
+            f"short when below {p['breakout_window']}-day low)\n"
+            f"  - Starting Capital: ${p.get('capital', 10000):,}\n"
+            f"  - Position Size: {p.get('position_pct', 100)}% of cash per trade\n\n"
             f"## Backtest Results\n"
             f"- Total Return: {m['total_return']}%\n"
             f"- Sharpe Ratio: {m['sharpe']}\n"
@@ -127,17 +163,27 @@ def build_prompt(query, retrieved_docs, dashboard_context=None):
         f"## Retrieved Knowledge (from Elder's books and teachings)\n"
         f"{rag_context}\n\n"
         f"## User Question\n{query}\n\n"
-        f"Answer based on the retrieved knowledge and current dashboard state. "
-        f"If the question is about the current setup or performance, use the dashboard data. "
-        f"If the question is about Elder's strategy or concepts, use the retrieved knowledge. "
-        f"Cite Elder's specific insights when relevant. Keep your answer concise but informative."
+        f"Instructions:\n"
+        f"- When the question is about the current setup or performance, "
+        f"reference the specific dashboard data and backtest results above.\n"
+        f"- When the question is about Elder's concepts, use the retrieved knowledge.\n"
+        f"- Explain parameters in plain language "
+        f"(e.g. 'Breakout Window of 5' means the strategy enters when price "
+        f"breaks the 5-day high/low, not a 5% move).\n"
+        f"- Cite Elder's insights naturally (e.g. 'As Elder teaches...' "
+        f"or 'Elder emphasizes...'), not as numbered references like [1].\n"
+        f"- Keep the answer concise but informative."
     )
 
     return prompt
 
 
 def generate_response(prompt, model_choice, groq_key=None, openai_key=None):
-    """Generate a response using the selected model."""
+    """Generate a response using the selected model.
+
+    API keys are read from environment variables (.env).
+    The optional key parameters are kept for backward compatibility.
+    """
     system_msg = (
         "You are Elder Trading Copilot, an AI assistant "
         "specialized in Alexander Elder's trading strategies. "
@@ -148,7 +194,7 @@ def generate_response(prompt, model_choice, groq_key=None, openai_key=None):
     if "Groq" in model_choice:
         key = groq_key or os.getenv("GROQ_API_KEY")
         if not key:
-            return "Please set GROQ_API_KEY in .env file."
+            return "Error: GROQ_API_KEY not found. Please add it to your .env file."
         client = Groq(api_key=key)
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -163,7 +209,7 @@ def generate_response(prompt, model_choice, groq_key=None, openai_key=None):
     else:
         key = openai_key or os.getenv("OPENAI_API_KEY")
         if not key:
-            return "Please set OPENAI_API_KEY in .env file."
+            return "Error: OPENAI_API_KEY not found. Please add it to your .env file."
         client = OpenAI(api_key=key)
         response = client.chat.completions.create(
             model="gpt-4o-mini",
