@@ -271,15 +271,20 @@ query = quick_query or query
 if query:
     try:
         # ── Execute pipeline & time each stage ──────────────────
-        t0 = time.perf_counter()
-        retrieved_docs = retrieve(vector_store, query, k=top_k)
-        t_retrieve = f"{(time.perf_counter()-t0)*1000:.0f} ms"
+        with st.status("Running RAG pipeline...", expanded=True) as status:
+            status.update(label="Embedding query...", state="running")
+            t0 = time.perf_counter()
+            retrieved_docs = retrieve(vector_store, query, k=top_k)
+            t_retrieve = f"{(time.perf_counter()-t0)*1000:.0f} ms"
+            status.update(label=f"Retrieved {len(retrieved_docs)} chunks ({t_retrieve})", state="running")
 
-        prompt = build_prompt(query, retrieved_docs, dashboard_ctx)
+            prompt = build_prompt(query, retrieved_docs, dashboard_ctx)
+            status.update(label=f"Generating response ({model_choice})...", state="running")
 
-        t1 = time.perf_counter()
-        response = generate_response(prompt, model_choice)
-        t_generate = f"{(time.perf_counter()-t1)*1000:.0f} ms"
+            t1 = time.perf_counter()
+            response = generate_response(prompt, model_choice)
+            t_generate = f"{(time.perf_counter()-t1)*1000:.0f} ms"
+            status.update(label=f"Done ({t_retrieve} retrieve + {t_generate} generate)", state="complete", expanded=False)
 
         # ── Build entry ─────────────────────────────────────────
         entry = {

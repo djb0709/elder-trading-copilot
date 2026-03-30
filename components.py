@@ -19,4 +19,5 @@ def render_sidebar_header():
         )
     st.page_link("dashboard.py", label="Dashboard", icon=":material/candlestick_chart:")
     st.page_link("pages/chatbot.py", label="RAG Pipeline Explorer", icon=":material/search:")
+    st.toggle("Celebrations", value=True, key="anim_on", help="Toggle balloons/snow animations")
     st.divider()
