@@ -102,26 +102,31 @@ st.markdown("""
     flex: 0 0 auto !important;
 }
 
-/* Pills and clear button same height */
-button[data-testid="stBaseButton-pills"] {
-    height: 34px !important;
-    min-height: 34px !important;
-    display: flex !important;
+/* Action bar: flex row, pill-style buttons */
+.st-key-action-bar {
+    flex-flow: row nowrap !important;
+    justify-content: flex-start !important;
     align-items: center !important;
-    justify-content: center !important;
+    gap: 0.4rem !important;
 }
-.st-key-clear_chat {
-    align-self: flex-end !important;
+.st-key-action-bar > div {
+    width: auto !important;
+    flex: 0 0 auto !important;
 }
+.st-key-action-bar button {
+    border-radius: 20px !important;
+    padding: 0.25rem 0.85rem !important;
+    font-size: 0.82rem !important;
+    height: 34px !important;
+}
+.st-key-action-bar > div:last-child {
+    margin-left: auto !important;
+}
+/* Clear button red */
 .st-key-clear_chat button {
     background: #fee2e2 !important;
     color: #dc2626 !important;
     border: 1px solid #fca5a5 !important;
-    border-radius: 20px !important;
-    font-size: 0.82rem !important;
-    padding: 0.25rem 0.75rem !important;
-    height: 34px !important;
-    min-height: 34px !important;
 }
 .st-key-clear_chat button:hover {
     background: #dc2626 !important;
@@ -798,24 +803,19 @@ else:
                     with st.chat_message(msg["role"], avatar=avatar):
                         st.write(msg["content"])
 
-            # Quick ask pills + Clear button
-            pill_map = {
-                "Explain Setup": "Explain my current strategy setup and what each parameter means.",
-                "Explain Perf": "Analyze my current backtest results and explain the trade-offs.",
-                "Risk?": "What are the risks of my current strategy configuration?",
-            }
-            pill_col, clear_col = st.columns([5, 1])
-            with pill_col:
-                selected_pill = st.pills(
-                    "Quick ask",
-                    list(pill_map.keys()),
-                    label_visibility="collapsed",
-                )
-            with clear_col:
+            # Quick ask buttons (pill style) + Clear
+            quick_query = None
+            action_bar = st.container(key="action-bar")
+            with action_bar:
+                if st.button("Explain Setup", key="q1"):
+                    quick_query = "Explain my current strategy setup and what each parameter means."
+                if st.button("Explain Perf", key="q2"):
+                    quick_query = "Analyze my current backtest results and explain the trade-offs."
+                if st.button("Risk?", key="q3"):
+                    quick_query = "What are the risks of my current strategy configuration?"
                 if st.button("Clear", key="clear_chat"):
                     st.session_state["chat_history"] = []
                     st.rerun()
-            quick_query = pill_map.get(selected_pill) if selected_pill else None
 
             # Chat input
             user_input = st.chat_input("Ask about Elder's strategy...")
