@@ -38,6 +38,17 @@ st.markdown("""
 /* Hide default Streamlit page nav */
 [data-testid="stSidebarNav"] { display: none !important; }
 
+
+/* Copilot slide-in animation */
+@keyframes copilotSlideIn {
+    from { opacity: 0; transform: translateX(30px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+.st-key-copilot-panel {
+    animation: copilotSlideIn 0.5s ease !important;
+    will-change: transform, opacity;
+}
+
 /* ── Chatbot panel wrapper ── */
 .chat-panel {
     background: #fff;
@@ -91,6 +102,35 @@ st.markdown("""
     flex: 0 0 auto !important;
 }
 
+/* Clear button color */
+.st-key-clear_chat button {
+    background: #fee2e2 !important;
+    color: #dc2626 !important;
+    border: 1px solid #fca5a5 !important;
+}
+.st-key-clear_chat button:hover {
+    background: #dc2626 !important;
+    color: #fff !important;
+}
+.st-key-clear_chat button p {
+    color: inherit !important;
+}
+
+/* Action bar: quick-ask left, clear right */
+.st-key-action-bar {
+    flex-flow: row nowrap !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    gap: 0.4rem !important;
+}
+.st-key-action-bar > div {
+    width: auto !important;
+    flex: 0 0 auto !important;
+}
+.st-key-action-bar > div:last-child {
+    margin-left: auto !important;
+}
+
 /* ── Close button — scoped by container key ── */
 div[data-testid="stElementContainer"]:has(button[key="close_copilot"]) button,
 div[data-testid="stVerticalBlock"] > div:has(> div > button[key="close_copilot"]) button {
@@ -108,17 +148,30 @@ div[data-testid="stVerticalBlock"] > div:has(> div > button[key="close_copilot"]
     background: #f0f2f6 !important;
     border: none !important;
     border-radius: 50% !important;
-    width: 30px !important; height: 30px !important; min-width: 30px !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
     padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     color: #888 !important;
     cursor: pointer !important;
     transition: all 0.15s;
+    line-height: 1 !important;
 }
 [class*="close-copilot-wrap"] button:hover {
     background: #667eea !important;
 }
 [class*="close-copilot-wrap"] button:hover p {
     color: #fff !important;
+}
+.st-key-close_copilot {
+    align-self: flex-end !important;
 }
 [class*="close-copilot-wrap"] button p {
     color: #888 !important;
@@ -571,6 +624,35 @@ else:
     copilot_open = st.session_state["copilot_open"]
 
     # ========================================================
+    # Celebration animations (only on improvement/deterioration)
+    # ========================================================
+    anim_on = st.session_state.get("anim_on", True)
+
+    prev = st.session_state.get("prev_metrics")
+    if prev is not None:
+        prev_ret = prev["total_return"]
+        cur_ret = m["total_return"]
+        prev_sharpe = prev["sharpe"]
+        cur_sharpe = m["sharpe"]
+
+        if anim_on:
+            if cur_ret > prev_ret and cur_sharpe > prev_sharpe:
+                st.balloons()
+                st.toast(
+                    f"Sharpe {prev_sharpe} -> {cur_sharpe}, "
+                    f"Return {prev_ret}% -> {cur_ret}%",
+                    icon="🎉",
+                )
+            elif cur_ret < prev_ret and cur_sharpe < prev_sharpe:
+                st.snow()
+                st.toast(
+                    f"Sharpe {prev_sharpe} -> {cur_sharpe}, "
+                    f"Return {prev_ret}% -> {cur_ret}%",
+                    icon="❄️",
+                )
+    st.session_state["prev_metrics"] = m
+
+    # ========================================================
     # Metrics row (always 6 columns — 6th is copilot trigger)
     # ========================================================
     c1, c2, c3, c4, c5, c6 = st.columns([1, 1, 1, 1, 1, 0.6])
@@ -642,6 +724,8 @@ else:
 
     if col_chat is not None:
         with col_chat:
+            panel = st.container(key="copilot-panel")
+        with panel:
             # Header: title + close button
             hdr_title, hdr_close = st.columns([6, 1])
             with hdr_title:
@@ -656,11 +740,6 @@ else:
                 close_wrap = st.container(key="close-copilot-wrap")
                 with close_wrap:
                     st.button("\u203A", key="close_copilot", on_click=toggle_copilot)
-
-            # Clear chat button
-            if st.button("Clear Chat", key="clear_chat", type="secondary"):
-                st.session_state["chat_history"] = []
-                st.rerun()
 
             # Context bar
             st.markdown(
@@ -719,17 +798,19 @@ else:
                     with st.chat_message(msg["role"], avatar=avatar):
                         st.write(msg["content"])
 
-            # Quick ask buttons
+            # Quick ask buttons + Clear Chat
             quick_query = None
-            quick_wrap = st.container(key="quick-ask-wrap")
-            with quick_wrap:
-                qcol1, qcol2, qcol3 = st.columns(3)
-                if qcol1.button("Explain Setup"):
+            action_bar = st.container(key="action-bar")
+            with action_bar:
+                if st.button("Explain Setup", key="q1"):
                     quick_query = "Explain my current strategy setup and what each parameter means."
-                if qcol2.button("Explain Perf"):
+                if st.button("Explain Perf", key="q2"):
                     quick_query = "Analyze my current backtest results and explain the trade-offs."
-                if qcol3.button("Risk?"):
+                if st.button("Risk?", key="q3"):
                     quick_query = "What are the risks of my current strategy configuration?"
+                if st.button("Clear", key="clear_chat"):
+                    st.session_state["chat_history"] = []
+                    st.rerun()
 
             # Chat input
             user_input = st.chat_input("Ask about Elder's strategy...")
@@ -743,10 +824,14 @@ else:
                 dashboard_ctx = st.session_state.get("backtest_results", None)
 
                 try:
-                    with st.spinner("Thinking..."):
+                    with st.status("Running RAG pipeline...", expanded=True) as status:
+                        status.update(label="Embedding query...", state="running")
                         retrieved = retrieve(vector_store, query, k=5)
+                        status.update(label=f"Retrieved {len(retrieved)} chunks", state="running")
                         prompt = build_prompt(query, retrieved, dashboard_ctx)
+                        status.update(label=f"Generating response ({model_choice})...", state="running")
                         response = generate_response(prompt, model_choice)
+                        status.update(label="Done", state="complete", expanded=False)
 
                     model_short = "Llama 3.3" if "Groq" in model_choice else "GPT-4o-mini"
                     meta = f"\n\n---\n*{model_short} | {len(retrieved)} chunks retrieved*"
