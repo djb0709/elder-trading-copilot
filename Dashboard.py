@@ -188,9 +188,12 @@ def run_backtest(data, win_short, win_long, rsi_lower, rsi_upper, breakout_windo
     cash = capital
     position = 0
     shares = 0
+    entry_price = 0
+    entry_idx = 0
     equity_curve = []
     buy_signals = []
     sell_signals = []
+    trade_log = []
 
     for i in range(len(data)):
         price = data["Close"].iloc[i]
@@ -207,19 +210,47 @@ def run_backtest(data, win_short, win_long, rsi_lower, rsi_upper, breakout_windo
             position = 1
             allocate = cash * position_pct / 100
             shares = int(allocate // price)
+            entry_price = price
+            entry_idx = i
             cash -= shares * price
             buy_signals.append(i)
         elif position == 0 and trend_down and macd_down and price < breakout_low:
             position = -1
             allocate = cash * position_pct / 100
             shares = int(allocate // price)
+            entry_price = price
+            entry_idx = i
             cash += shares * price
             sell_signals.append(i)
         elif position == 1 and rsi_high:
+            pnl = (price - entry_price) * shares
+            trade_log.append({
+                "Type": "Long",
+                "Entry Date": str(data.index[entry_idx].date()),
+                "Entry Price": round(entry_price, 2),
+                "Exit Date": str(data.index[i].date()),
+                "Exit Price": round(price, 2),
+                "Shares": shares,
+                "P&L ($)": round(pnl, 2),
+                "Return (%)": round(pnl / (entry_price * shares) * 100, 2) if shares else 0,
+                "Days Held": i - entry_idx,
+            })
             cash += shares * price
             position = 0
             shares = 0
         elif position == -1 and rsi_low:
+            pnl = (entry_price - price) * shares
+            trade_log.append({
+                "Type": "Short",
+                "Entry Date": str(data.index[entry_idx].date()),
+                "Entry Price": round(entry_price, 2),
+                "Exit Date": str(data.index[i].date()),
+                "Exit Price": round(price, 2),
+                "Shares": shares,
+                "P&L ($)": round(pnl, 2),
+                "Return (%)": round(pnl / (entry_price * shares) * 100, 2) if shares else 0,
+                "Days Held": i - entry_idx,
+            })
             cash -= shares * price
             position = 0
             shares = 0
@@ -233,15 +264,16 @@ def run_backtest(data, win_short, win_long, rsi_lower, rsi_upper, breakout_windo
         equity_curve.append(equity)
 
     data["Equity"] = equity_curve
+    equity_series = pd.Series(equity_curve, index=data.index)
+    peak = equity_series.cummax()
+    drawdown_series = (peak - equity_series) / peak * 100
+    data["Drawdown"] = drawdown_series.values
 
     total_return = (equity_curve[-1] - capital) / capital * 100
     trade_count = len(buy_signals) + len(sell_signals)
     daily_returns = pd.Series(equity_curve).pct_change().dropna()
     sharpe = (daily_returns.mean() / daily_returns.std() * np.sqrt(252)) if daily_returns.std() != 0 else 0
-    equity_series = pd.Series(equity_curve)
-    peak = equity_series.cummax()
-    drawdown = (peak - equity_series) / peak
-    max_drawdown = drawdown.max() * 100
+    max_drawdown = drawdown_series.max()
 
     if max_drawdown < 15:
         risk_level = "Low"
@@ -257,111 +289,157 @@ def run_backtest(data, win_short, win_long, rsi_lower, rsi_upper, breakout_windo
         "trade_count": trade_count,
         "risk_level": risk_level,
     }
-    return data, buy_signals, sell_signals, metrics
+    return data, buy_signals, sell_signals, metrics, trade_log
 
 # ============================================================
 # Charts
 # ============================================================
 
-def build_charts(data, buy_signals, sell_signals, rsi_lower, rsi_upper, capital=10000):
+def build_charts(data, buy_signals, sell_signals, rsi_lower, rsi_upper, capital=10000,
+                  visible_panels=None):
+    if visible_panels is None:
+        visible_panels = ["Price + Signals", "MACD", "RSI", "Equity Curve", "Drawdown"]
+
+    panel_map = {
+        "Price + Signals": "Price + Signals",
+        "MACD": "MACD (Screen 2)",
+        "RSI": "RSI",
+        "Equity Curve": "Equity Curve",
+        "Drawdown": "Drawdown",
+    }
+    active = [p for p in panel_map if p in visible_panels]
+    if not active:
+        active = ["Price + Signals"]
+    n_rows = len(active)
+    titles = tuple(panel_map[p] for p in active)
+
+    # Give Price row more height
+    heights = []
+    for p in active:
+        heights.append(0.4 if p == "Price + Signals" else 0.2)
+    total = sum(heights)
+    heights = [h / total for h in heights]
+
     fig = make_subplots(
-        rows=4, cols=1, shared_xaxes=True,
-        row_heights=[0.4, 0.2, 0.2, 0.2],
+        rows=n_rows, cols=1, shared_xaxes=True,
+        row_heights=heights,
         vertical_spacing=0.04,
-        subplot_titles=("Price + Signals", "MACD (Screen 2)", "RSI", "Equity Curve"),
+        subplot_titles=titles,
     )
 
-    # Row 1: Price + Signals
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data["Close"], name="Close",
-        line=dict(color="#636EFA"),
-        legend="legend1",
-    ), row=1, col=1)
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data["EMA_short"], name="EMA Short",
-        line=dict(color="#00CC96", dash="dot"),
-        legend="legend1",
-    ), row=1, col=1)
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data["EMA_long"], name="EMA Long",
-        line=dict(color="#FFA15A", dash="dot"),
-        legend="legend1",
-    ), row=1, col=1)
+    # Map panel name to row number
+    row_of = {p: i + 1 for i, p in enumerate(active)}
 
-    if buy_signals:
+    # Use a single legend since row numbers are dynamic
+    legend_idx = 1
+
+    if "Price + Signals" in row_of:
+        r = row_of["Price + Signals"]
+        lg = f"legend{legend_idx}"; legend_idx += 1
         fig.add_trace(go.Scatter(
-            x=data.index[buy_signals], y=data["Close"].iloc[buy_signals],
-            mode="markers", name="Long Entry",
-            marker=dict(symbol="triangle-up", size=10, color="#00CC96"),
-            legend="legend1",
-        ), row=1, col=1)
-    if sell_signals:
+            x=data.index, y=data["Close"], name="Close",
+            line=dict(color="#636EFA"), legend=lg,
+        ), row=r, col=1)
         fig.add_trace(go.Scatter(
-            x=data.index[sell_signals], y=data["Close"].iloc[sell_signals],
-            mode="markers", name="Short Entry",
-            marker=dict(symbol="triangle-down", size=10, color="#EF553B"),
-            legend="legend1",
-        ), row=1, col=1)
+            x=data.index, y=data["EMA_short"], name="EMA Short",
+            line=dict(color="#00CC96", dash="dot"), legend=lg,
+        ), row=r, col=1)
+        fig.add_trace(go.Scatter(
+            x=data.index, y=data["EMA_long"], name="EMA Long",
+            line=dict(color="#FFA15A", dash="dot"), legend=lg,
+        ), row=r, col=1)
+        if buy_signals:
+            fig.add_trace(go.Scatter(
+                x=data.index[buy_signals], y=data["Close"].iloc[buy_signals],
+                mode="markers", name="Long Entry",
+                marker=dict(symbol="triangle-up", size=10, color="#00CC96"), legend=lg,
+            ), row=r, col=1)
+        if sell_signals:
+            fig.add_trace(go.Scatter(
+                x=data.index[sell_signals], y=data["Close"].iloc[sell_signals],
+                mode="markers", name="Short Entry",
+                marker=dict(symbol="triangle-down", size=10, color="#EF553B"), legend=lg,
+            ), row=r, col=1)
+        fig.update_yaxes(title_text="Price ($)", row=r, col=1)
 
-    # Row 2: MACD
-    macd_hist = data["MACD"] - data["MACD_signal"]
-    colors = ["#26A69A" if v >= 0 else "#EF5350" for v in macd_hist]
-    fig.add_trace(go.Bar(
-        x=data.index, y=macd_hist, name="Histogram",
-        marker_color=colors, showlegend=False,
-    ), row=2, col=1)
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data["MACD"], name="MACD",
-        line=dict(color="#2196F3", width=1.5),
-        legend="legend2",
-    ), row=2, col=1)
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data["MACD_signal"], name="Signal",
-        line=dict(color="#FF9800", width=1.5),
-        legend="legend2",
-    ), row=2, col=1)
-    fig.add_hline(y=0, line_dash="dot", line_color="#999", line_width=0.5, row=2, col=1)
+    if "MACD" in row_of:
+        r = row_of["MACD"]
+        lg = f"legend{legend_idx}"; legend_idx += 1
+        macd_hist = data["MACD"] - data["MACD_signal"]
+        colors = ["#26A69A" if v >= 0 else "#EF5350" for v in macd_hist]
+        fig.add_trace(go.Bar(
+            x=data.index, y=macd_hist, name="Histogram",
+            marker_color=colors, showlegend=False,
+        ), row=r, col=1)
+        fig.add_trace(go.Scatter(
+            x=data.index, y=data["MACD"], name="MACD",
+            line=dict(color="#2196F3", width=1.5), legend=lg,
+        ), row=r, col=1)
+        fig.add_trace(go.Scatter(
+            x=data.index, y=data["MACD_signal"], name="Signal",
+            line=dict(color="#FF9800", width=1.5), legend=lg,
+        ), row=r, col=1)
+        fig.add_hline(y=0, line_dash="dot", line_color="#999", line_width=0.5, row=r, col=1)
+        fig.update_yaxes(title_text="MACD", row=r, col=1)
 
-    # Row 3: RSI
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data["RSI"], name="RSI",
-        line=dict(color="#AB63FA"),
-        legend="legend3",
-    ), row=3, col=1)
-    fig.add_hline(y=rsi_lower, line_dash="dash", line_color="green",
-                  annotation_text=f"Oversold ({rsi_lower})", row=3, col=1)
-    fig.add_hline(y=rsi_upper, line_dash="dash", line_color="red",
-                  annotation_text=f"Overbought ({rsi_upper})", row=3, col=1)
-    fig.add_hrect(y0=0, y1=rsi_lower, fillcolor="green", opacity=0.05, row=3, col=1)
-    fig.add_hrect(y0=rsi_upper, y1=100, fillcolor="red", opacity=0.05, row=3, col=1)
+    if "RSI" in row_of:
+        r = row_of["RSI"]
+        lg = f"legend{legend_idx}"; legend_idx += 1
+        fig.add_trace(go.Scatter(
+            x=data.index, y=data["RSI"], name="RSI",
+            line=dict(color="#AB63FA"), legend=lg,
+        ), row=r, col=1)
+        fig.add_hline(y=rsi_lower, line_dash="dash", line_color="green",
+                      annotation_text=f"Oversold ({rsi_lower})", row=r, col=1)
+        fig.add_hline(y=rsi_upper, line_dash="dash", line_color="red",
+                      annotation_text=f"Overbought ({rsi_upper})", row=r, col=1)
+        fig.add_hrect(y0=0, y1=rsi_lower, fillcolor="green", opacity=0.05, row=r, col=1)
+        fig.add_hrect(y0=rsi_upper, y1=100, fillcolor="red", opacity=0.05, row=r, col=1)
+        fig.update_yaxes(title_text="RSI", row=r, col=1)
 
-    # Row 4: Equity Curve
-    buy_hold = capital * data["Close"] / data["Close"].iloc[0]
-    fig.add_trace(go.Scatter(
-        x=data.index, y=buy_hold, name="Buy & Hold",
-        line=dict(color="gray", dash="dash"),
-        legend="legend4",
-    ), row=4, col=1)
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data["Equity"], name="Strategy",
-        line=dict(color="#19D3F3"),
-        fill="tozeroy", fillcolor="rgba(25,211,243,0.1)",
-        legend="legend4",
-    ), row=4, col=1)
+    if "Equity Curve" in row_of:
+        r = row_of["Equity Curve"]
+        lg = f"legend{legend_idx}"; legend_idx += 1
+        buy_hold = capital * data["Close"] / data["Close"].iloc[0]
+        fig.add_trace(go.Scatter(
+            x=data.index, y=buy_hold, name="Buy & Hold",
+            line=dict(color="gray", dash="dash"), legend=lg,
+        ), row=r, col=1)
+        fig.add_trace(go.Scatter(
+            x=data.index, y=data["Equity"], name="Strategy",
+            line=dict(color="#19D3F3"),
+            fill="tozeroy", fillcolor="rgba(25,211,243,0.1)", legend=lg,
+        ), row=r, col=1)
+        fig.update_yaxes(title_text="Portfolio ($)", row=r, col=1)
 
-    # Each subplot gets its own legend positioned at its top-right
+    if "Drawdown" in row_of:
+        r = row_of["Drawdown"]
+        lg = f"legend{legend_idx}"; legend_idx += 1
+        fig.add_trace(go.Scatter(
+            x=data.index, y=-data["Drawdown"], name="Drawdown",
+            line=dict(color="#EF5350", width=1),
+            fill="tozeroy", fillcolor="rgba(239,83,80,0.15)", legend=lg,
+        ), row=r, col=1)
+        fig.add_hline(y=0, line_dash="dot", line_color="#999", line_width=0.5, row=r, col=1)
+        fig.update_yaxes(title_text="DD (%)", row=r, col=1)
+
+    # Dynamic height based on panel count
+    chart_height = max(400, n_rows * 200)
     fig.update_layout(
-        height=850, template="plotly_white",
+        height=chart_height, template="plotly_white",
         margin=dict(l=0, r=0, t=60, b=0),
-        legend1=dict(orientation="h", yanchor="bottom", y=1.06, xanchor="left", x=0, font=dict(size=10)),
-        legend2=dict(orientation="h", yanchor="bottom", y=0.605, xanchor="left", x=0, font=dict(size=10)),
-        legend3=dict(orientation="h", yanchor="bottom", y=0.39, xanchor="left", x=0, font=dict(size=10)),
-        legend4=dict(orientation="h", yanchor="bottom", y=0.175, xanchor="left", x=0, font=dict(size=10)),
     )
-    fig.update_yaxes(title_text="Price ($)", row=1, col=1)
-    fig.update_yaxes(title_text="MACD", row=2, col=1)
-    fig.update_yaxes(title_text="RSI", row=3, col=1)
-    fig.update_yaxes(title_text="Portfolio ($)", row=4, col=1)
+
+    # Position legends dynamically based on subplot domains
+    for i in range(1, legend_idx):
+        y_domain = fig.layout[f"yaxis{'' if i == 1 else i}"].domain
+        fig.update_layout(**{
+            f"legend{i}": dict(
+                orientation="h", yanchor="top", y=y_domain[1],
+                xanchor="left", x=0.05, font=dict(size=10),
+            )
+        })
+
     return fig
 
 # ============================================================
@@ -422,6 +500,16 @@ with st.sidebar:
              "a short entry fires when price drops below the N-day low.",
     )
 
+    st.markdown("### Chart Panels")
+    optional_panels = ["MACD", "RSI", "Equity Curve", "Drawdown"]
+    extra_panels = st.multiselect(
+        "Additional panels",
+        optional_panels,
+        default=optional_panels,
+        label_visibility="collapsed",
+    )
+    visible_panels = ["Price + Signals"] + extra_panels
+
 # ============================================================
 # Load data & run backtest
 # ============================================================
@@ -438,7 +526,7 @@ stock = load_stock(ticker, start_date, end_date)
 if stock.empty:
     st.error("No data found. Check ticker or date range.")
 else:
-    data, buy_signals, sell_signals, metrics = run_backtest(
+    data, buy_signals, sell_signals, metrics, trade_log = run_backtest(
         stock, win_short, win_long, rsi_lower, rsi_upper, breakout_window, capital, position_pct
     )
     st.session_state["backtest_results"] = {
@@ -518,8 +606,30 @@ else:
         col_chat = None
 
     with col_dash:
-        fig = build_charts(data, buy_signals, sell_signals, rsi_lower, rsi_upper, capital)
+        fig = build_charts(data, buy_signals, sell_signals, rsi_lower, rsi_upper, capital, visible_panels)
         st.plotly_chart(fig, use_container_width=True)
+
+        # Trade log table
+        if trade_log:
+            with st.expander(f"Trade Log ({len(trade_log)} closed trades)", expanded=False):
+                trade_df = pd.DataFrame(trade_log)
+                def color_pnl(v):
+                    if isinstance(v, (int, float)) and v > 0:
+                        return "color: #16a34a"
+                    elif isinstance(v, (int, float)) and v < 0:
+                        return "color: #dc2626"
+                    return ""
+                styled = trade_df.style.map(color_pnl, subset=["P&L ($)", "Return (%)"])
+                st.dataframe(styled, use_container_width=True, hide_index=True)
+                # Summary stats
+                wins = sum(1 for t in trade_log if t["P&L ($)"] > 0)
+                losses = sum(1 for t in trade_log if t["P&L ($)"] <= 0)
+                total_pnl = sum(t["P&L ($)"] for t in trade_log)
+                s1, s2, s3, s4 = st.columns(4)
+                s1.metric("Wins", wins)
+                s2.metric("Losses", losses)
+                s3.metric("Win Rate", f"{wins / len(trade_log) * 100:.0f}%")
+                s4.metric("Total P&L", f"${total_pnl:,.0f}")
 
     if col_chat is not None:
         with col_chat:
