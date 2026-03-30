@@ -131,7 +131,7 @@ with st.sidebar:
     st.header("RAG Settings")
     model_choice = st.selectbox(
         "LLM Model",
-        ["Llama 3.3 (Groq)", "GPT-4o-mini (OpenAI)"],
+        ["Llama 3.3 70B (Groq)", "Llama 3.1 8B (Groq)", "Mixtral 8x7B (Groq)", "GPT-4o-mini (OpenAI)"],
     )
     top_k = st.selectbox(
         "Retrieval Top-K",
