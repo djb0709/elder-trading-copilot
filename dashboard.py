@@ -789,78 +789,111 @@ else:
             welcome_query = None
             chat_container = st.container(height=550)
             with chat_container:
+                welcome_placeholder = st.empty()
                 if not st.session_state.get("chat_history"):
-                    st.markdown(
-                        '<div style="height:120px;"></div>',
-                        unsafe_allow_html=True,
-                    )
-                    _, img_col, _ = st.columns([2, 1, 2])
-                    with img_col:
-                        st.image("data/anime_edit.png", use_container_width=True)
-                    st.markdown(
-                        '<p style="text-align:center; color:#888; font-size:0.95rem; '
-                        'margin-bottom:0.5rem;">'
-                        "Ask me anything about your strategy, performance, or Elder's teachings."
-                        "</p>",
-                        unsafe_allow_html=True,
-                    )
-                    welcome_wrap = st.container(key="welcome-ask-wrap")
-                    with welcome_wrap:
-                        wc1, wc2, wc3 = st.columns(3)
-                        if wc1.button("Sharpe Ratio?", key="w1"):
-                            welcome_query = "How is the Sharpe Ratio calculated in our system?"
-                        if wc2.button("Triple Screen?", key="w2"):
-                            welcome_query = "What is Elder's Triple Screen Trading System and how does it work?"
-                        if wc3.button("My Results", key="w3"):
-                            welcome_query = "Analyze my current backtest results and explain the trade-offs."
+                    with welcome_placeholder.container():
+                        st.markdown(
+                            '<div style="height:120px;"></div>',
+                            unsafe_allow_html=True,
+                        )
+                        _, img_col, _ = st.columns([2, 1, 2])
+                        with img_col:
+                            st.image("data/anime_edit.png", use_container_width=True)
+                        st.markdown(
+                            '<p style="text-align:center; color:#888; font-size:0.95rem; '
+                            'margin-bottom:0.5rem;">'
+                            "Ask me anything about your strategy, performance, or Elder's teachings."
+                            "</p>",
+                            unsafe_allow_html=True,
+                        )
+                        welcome_wrap = st.container(key="welcome-ask-wrap")
+                        with welcome_wrap:
+                            wc1, wc2, wc3 = st.columns(3)
+                            if wc1.button("Sharpe Ratio?", key="w1"):
+                                welcome_query = "How is the Sharpe Ratio calculated in our system?"
+                            if wc2.button("Triple Screen?", key="w2"):
+                                welcome_query = "What is Elder's Triple Screen Trading System and how does it work?"
+                            if wc3.button("My Results", key="w3"):
+                                welcome_query = "Analyze my current backtest results and explain the trade-offs."
                 for msg in st.session_state["chat_history"]:
                     avatar = "data/anime_edit.png" if msg["role"] == "assistant" else None
                     with st.chat_message(msg["role"], avatar=avatar):
                         st.write(msg["content"])
 
             # Quick ask buttons (pill style) + Clear
+            generating = st.session_state.get("generating", False)
             quick_query = None
             action_bar = st.container(key="action-bar")
             with action_bar:
-                if st.button("Explain Setup", key="q1"):
+                if st.button("Explain Setup", key="q1", disabled=generating):
                     quick_query = "Explain my current strategy setup and what each parameter means."
-                if st.button("Explain Perf", key="q2"):
+                if st.button("Explain Perf", key="q2", disabled=generating):
                     quick_query = "Analyze my current backtest results and explain the trade-offs."
-                if st.button("Risk?", key="q3"):
+                if st.button("Risk?", key="q3", disabled=generating):
                     quick_query = "What are the risks of my current strategy configuration?"
-                if st.button("Clear", key="clear_chat"):
+                if st.button("Clear", key="clear_chat", disabled=generating):
                     st.session_state["chat_history"] = []
                     st.rerun()
 
             # Chat input
-            user_input = st.chat_input("Ask about Elder's strategy...")
+            user_input = st.chat_input("Ask about Elder's strategy...", disabled=generating)
             query = welcome_query or quick_query or user_input
 
-            if query:
+            # Step 1: New query → save it, set generating, rerun to disable UI
+            if query and not generating:
+                try:
+                    welcome_placeholder.empty()
+                except Exception:
+                    pass
                 st.session_state["chat_history"].append(
                     {"role": "user", "content": query}
                 )
+                st.session_state["pending_query"] = query
+                st.session_state["generating"] = True
+                st.rerun()
 
+            # Step 2: After rerun with generating=True, process the pending query
+            pending = st.session_state.pop("pending_query", None)
+            if pending and generating:
                 dashboard_ctx = st.session_state.get("backtest_results", None)
 
                 try:
                     with st.status("Running RAG pipeline...", expanded=True) as status:
                         status.update(label="Embedding query...", state="running")
-                        retrieved = retrieve(vector_store, query, k=5)
+                        retrieved = retrieve(vector_store, pending, k=5)
                         status.update(label=f"Retrieved {len(retrieved)} chunks", state="running")
-                        prompt = build_prompt(query, retrieved, dashboard_ctx)
+                        prompt = build_prompt(pending, retrieved, dashboard_ctx)
                         status.update(label=f"Generating response ({model_choice})...", state="running")
                         response = generate_response(prompt, model_choice)
                         status.update(label="Done", state="complete", expanded=False)
 
                     model_short = "Llama 3.3" if "Groq" in model_choice else "GPT-4o-mini"
                     meta = f"\n\n---\n*{model_short} | {len(retrieved)} chunks retrieved*"
+                    full_response = response + meta
+
+                    # Stream response inside chat container
+                    import time as _time
+                    def _stream_words():
+                        for word in full_response.split(" "):
+                            yield word + " "
+                            _time.sleep(0.03)
+
+                    with chat_container:
+                        with st.chat_message("assistant", avatar="data/anime_edit.png"):
+                            st.write_stream(_stream_words())
+
                     st.session_state["chat_history"].append(
-                        {"role": "assistant", "content": response + meta}
+                        {"role": "assistant", "content": full_response}
                     )
+                    st.session_state["generating"] = False
                     st.rerun()
-                except Exception:
-                    st.error("Failed to generate response. Please check your API keys in .env file.")
+                except Exception as e:
+                    st.session_state["generating"] = False
+                    err_msg = str(e)
+                    if "rate_limit" in err_msg or "429" in err_msg:
+                        st.error("Rate limit reached. Try switching to the other model or wait a few minutes.")
+                    else:
+                        st.error("Failed to generate response. Please check your API keys in .env file.")
                     if st.session_state["chat_history"] and st.session_state["chat_history"][-1]["role"] == "user":
                         st.session_state["chat_history"].pop()
 
