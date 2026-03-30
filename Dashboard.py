@@ -81,6 +81,15 @@ st.markdown("""
     width: auto !important;
     flex: 0 0 auto !important;
 }
+/* Welcome buttons centered */
+[class*="welcome-ask-wrap"] [data-testid="stHorizontalBlock"] {
+    gap: 0.5rem !important;
+    justify-content: center !important;
+}
+[class*="welcome-ask-wrap"] [data-testid="stColumn"] {
+    width: auto !important;
+    flex: 0 0 auto !important;
+}
 
 /* ── Close button — scoped by container key ── */
 div[data-testid="stElementContainer"]:has(button[key="close_copilot"]) button,
@@ -678,31 +687,33 @@ else:
             if "chat_history" not in st.session_state:
                 st.session_state["chat_history"] = []
 
+            welcome_query = None
             chat_container = st.container(height=550)
             with chat_container:
-                if not st.session_state["chat_history"]:
+                if not st.session_state.get("chat_history"):
+                    st.markdown(
+                        '<div style="height:120px;"></div>',
+                        unsafe_allow_html=True,
+                    )
                     _, img_col, _ = st.columns([2, 1, 2])
                     with img_col:
                         st.image("data/anime_edit.png", use_container_width=True)
                     st.markdown(
-                        '<div style="text-align:center; padding:0 0.5rem 0.5rem;">'
-                        '<p style="color:#888; font-size:0.95rem; margin-bottom:1rem;">'
+                        '<p style="text-align:center; color:#888; font-size:0.95rem; '
+                        'margin-bottom:0.5rem;">'
                         "Ask me anything about your strategy, performance, or Elder's teachings."
-                        "</p>"
-                        '<div style="display:flex; flex-wrap:wrap; gap:0.5rem; '
-                        'justify-content:center;">'
-                        '<span style="background:#f0f2f6; padding:0.35rem 0.8rem; '
-                        'border-radius:16px; font-size:0.78rem; color:#555;">'
-                        "How is Sharpe Ratio calculated?</span>"
-                        '<span style="background:#f0f2f6; padding:0.35rem 0.8rem; '
-                        'border-radius:16px; font-size:0.78rem; color:#555;">'
-                        "What is the Triple Screen system?</span>"
-                        '<span style="background:#f0f2f6; padding:0.35rem 0.8rem; '
-                        'border-radius:16px; font-size:0.78rem; color:#555;">'
-                        "Analyze my current results</span>"
-                        "</div></div>",
+                        "</p>",
                         unsafe_allow_html=True,
                     )
+                    welcome_wrap = st.container(key="welcome-ask-wrap")
+                    with welcome_wrap:
+                        wc1, wc2, wc3 = st.columns(3)
+                        if wc1.button("Sharpe Ratio?", key="w1"):
+                            welcome_query = "How is the Sharpe Ratio calculated in our system?"
+                        if wc2.button("Triple Screen?", key="w2"):
+                            welcome_query = "What is Elder's Triple Screen Trading System and how does it work?"
+                        if wc3.button("My Results", key="w3"):
+                            welcome_query = "Analyze my current backtest results and explain the trade-offs."
                 for msg in st.session_state["chat_history"]:
                     avatar = "data/anime_edit.png" if msg["role"] == "assistant" else None
                     with st.chat_message(msg["role"], avatar=avatar):
@@ -722,7 +733,7 @@ else:
 
             # Chat input
             user_input = st.chat_input("Ask about Elder's strategy...")
-            query = quick_query or user_input
+            query = welcome_query or quick_query or user_input
 
             if query:
                 st.session_state["chat_history"].append(
