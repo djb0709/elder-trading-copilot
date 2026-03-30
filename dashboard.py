@@ -7,6 +7,7 @@ from plotly.subplots import make_subplots
 from rag import (
     load_or_build_vector_store,
     retrieve, build_prompt, generate_response,
+    build_vector_store_for_model, EMBEDDING_MODELS,
 )
 
 # ============================================================
@@ -27,7 +28,9 @@ st.set_page_config(
 def init_rag():
     return load_or_build_vector_store()
 
-vector_store = init_rag()
+@st.cache_resource(show_spinner="Building index...")
+def init_rag_with_model(model_key):
+    return build_vector_store_for_model(model_key)
 
 # ============================================================
 # CSS for slide-in chatbot panel
@@ -775,12 +778,27 @@ else:
                 unsafe_allow_html=True,
             )
 
-            # Model selector
-            model_choice = st.selectbox(
-                "Model",
-                ["Llama 3.3 70B (Groq)", "Llama 3.1 8B (Groq)", "Mixtral 8x7B (Groq)", "GPT-4o-mini (OpenAI)"],
-                label_visibility="collapsed",
-            )
+            # Embedding & LLM selectors
+            emb_col, llm_col = st.columns(2)
+            with emb_col:
+                emb_choice = st.selectbox(
+                    "Embedding Model",
+                    list(EMBEDDING_MODELS.keys()),
+                    index=0,
+                    help="Converts text to vectors for similarity search.",
+                )
+            with llm_col:
+                model_choice = st.selectbox(
+                    "LLM Model",
+                    ["Llama 3.3 70B (Groq)", "Llama 3.1 8B (Groq)", "Mixtral 8x7B (Groq)", "GPT-4o-mini (OpenAI)"],
+                    help="Generates the final answer from retrieved context.",
+                )
+
+            # Load vector store based on embedding choice
+            if emb_choice == "bge-small-en-v1.5":
+                vector_store = init_rag()
+            else:
+                vector_store = init_rag_with_model(emb_choice)
 
             # Chat history
             if "chat_history" not in st.session_state:

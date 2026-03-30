@@ -80,12 +80,26 @@ def build_vector_store(docs, model_name=None):
     return vector_store, embedding_model
 
 
+def get_index_path_for_model(model_key):
+    """Get the FAISS index path for a specific embedding model."""
+    return os.path.join(ROOT_DIR, f"faiss_index_{model_key}")
+
+
 def build_vector_store_for_model(model_key):
-    """Build a fresh FAISS index using the specified embedding model."""
+    """Load pre-built FAISS index for model, or build from scratch."""
     model_name = EMBEDDING_MODELS.get(model_key, EMBEDDING_MODEL_NAME)
-    docs = load_documents()
+    index_path = get_index_path_for_model(model_key)
     embedding_model = get_embedding_model(model_name)
+
+    if os.path.exists(os.path.join(index_path, "index.faiss")):
+        return FAISS.load_local(
+            index_path, embedding_model,
+            allow_dangerous_deserialization=True,
+        )
+
+    docs = load_documents()
     vector_store = FAISS.from_documents(docs, embedding_model)
+    vector_store.save_local(index_path)
     return vector_store
 
 
