@@ -2,6 +2,8 @@
 
 A context-aware intelligent trading assistant that combines an interactive backtesting dashboard with a RAG-powered chatbot, built around Alexander Elder's Triple Screen Trading System.
 
+![Dashboard](data/Dashboard.jpeg)
+
 ---
 
 ## Features
@@ -89,7 +91,7 @@ A context-aware intelligent trading assistant that combines an interactive backt
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_USERNAME/elder-trading-copilot.git
+git clone https://github.com/AlanY1an/elder-trading-copilot.git
 cd elder-trading-copilot
 
 # 2. Create a virtual environment (recommended)
@@ -110,7 +112,7 @@ cp .env.example .env
 python build_index.py
 
 # 6. Launch the application
-streamlit run Dashboard.py
+streamlit run dashboard.py
 ```
 
 The app opens at `http://localhost:8501`. Use the sidebar to select a ticker and adjust strategy parameters; the copilot panel on the right answers questions with full dashboard context.
@@ -123,13 +125,13 @@ The app opens at `http://localhost:8501`. Use the sidebar to select a ticker and
 
 ```
 elder-trading-copilot/
-├── Dashboard.py              # Main entry point: dashboard + embedded copilot panel
+├── dashboard.py              # Main entry point: dashboard + embedded copilot panel
 ├── rag.py                    # RAG pipeline: load docs, build/query FAISS, generate
 ├── build_index.py            # One-time script to pre-build and save the FAISS index
 ├── requirements.txt          # Python dependencies
 ├── .env.example              # Template for API keys
 ├── pages/
-│   └── Chatbot.py            # RAG Pipeline Explorer (debug/visualization page)
+│   └── chatbot.py            # RAG Pipeline Explorer (debug/visualization page)
 ├── data/
 │   ├── knowledge_base.csv    # 877 QA pairs from Elder's books and teachings
 │   └── elder_new_high_new_low.txt   # Video lecture transcript (~5,400 chars)
@@ -199,22 +201,6 @@ The knowledge base contains **877 QA pairs** plus supplementary text, drawn from
 | Elder video lecture transcript | ~15 chunks | `elder_new_high_new_low.txt`, split at 400 chars with 50-char overlap |
 
 QA pairs are not chunked further -- each question-answer pair is embedded as a single unit so that the question portion aids retrieval while the answer provides the knowledge.
-
----
-
-## Screenshots
-
-### Dashboard
-
-(screenshot)
-
-### Copilot Panel
-
-(screenshot)
-
-### RAG Pipeline Explorer
-
-(screenshot)
 
 ---
 
