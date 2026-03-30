@@ -38,6 +38,12 @@ st.markdown("""
 /* Hide default Streamlit page nav */
 [data-testid="stSidebarNav"] { display: none !important; }
 
+/* Sidebar divider compact */
+[data-testid="stSidebar"] hr {
+    margin-top: 10px !important;
+    margin-bottom: 10px !important;
+}
+
 
 /* Copilot slide-in animation */
 @keyframes copilotSlideIn {
@@ -576,6 +582,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     visible_panels = ["Price + Signals"] + extra_panels
+
 
 # ============================================================
 # Load data & run backtest

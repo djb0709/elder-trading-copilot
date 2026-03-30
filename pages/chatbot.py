@@ -150,6 +150,7 @@ with st.sidebar:
         st.session_state["debug_chat_history"] = []
         st.rerun()
 
+
 dashboard_ctx = None
 if use_dashboard and "backtest_results" in st.session_state:
     dashboard_ctx = st.session_state["backtest_results"]
