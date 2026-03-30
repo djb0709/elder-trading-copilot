@@ -727,9 +727,10 @@ else:
                 s3.metric("Win Rate", f"{wins / len(trade_log) * 100:.0f}%")
                 s4.metric("Total P&L", f"${total_pnl:,.0f}")
 
-    if col_chat is not None:
-        with col_chat:
-            panel = st.container(key="copilot-panel")
+    @st.fragment
+    def copilot_chat():
+        """Chatbot fragment — reruns only this section, not the full page."""
+        panel = st.container(key="copilot-panel")
         with panel:
             # Header: title + close button
             hdr_title, hdr_close = st.columns([6, 1])
@@ -744,18 +745,25 @@ else:
             with hdr_close:
                 close_wrap = st.container(key="close-copilot-wrap")
                 with close_wrap:
-                    st.button("\u203A", key="close_copilot", on_click=toggle_copilot)
+                    if st.button("\u203A", key="close_copilot"):
+                        toggle_copilot()
+                        st.rerun(scope="app")
 
             # Context bar
+            ctx = st.session_state.get("backtest_results", {})
+            ctx_m = ctx.get("metrics", m)
+            ctx_p = ctx.get("params", {})
             st.markdown(
                 f'<div class="chat-context">'
-                f'<strong>{ticker}</strong> &nbsp;|&nbsp; {start_date} ~ {end_date} &nbsp;|&nbsp; '
-                f'EMA {win_short}/{win_long} &nbsp;|&nbsp; RSI {rsi_lower}-{rsi_upper} &nbsp;|&nbsp; '
-                f'Breakout {breakout_window}<br>'
-                f'Return <strong>{m["total_return"]}%</strong> &nbsp;|&nbsp; '
-                f'Sharpe <strong>{m["sharpe"]}</strong> &nbsp;|&nbsp; '
-                f'MaxDD <strong>-{m["max_drawdown"]}%</strong> &nbsp;|&nbsp; '
-                f'Risk: <strong>{m["risk_level"]}</strong>'
+                f'<strong>{ctx.get("ticker", ticker)}</strong> &nbsp;|&nbsp; '
+                f'{ctx.get("start_date", start_date)} ~ {ctx.get("end_date", end_date)} &nbsp;|&nbsp; '
+                f'EMA {ctx_p.get("win_short", win_short)}/{ctx_p.get("win_long", win_long)} &nbsp;|&nbsp; '
+                f'RSI {ctx_p.get("rsi_lower", rsi_lower)}-{ctx_p.get("rsi_upper", rsi_upper)} &nbsp;|&nbsp; '
+                f'Breakout {ctx_p.get("breakout_window", breakout_window)}<br>'
+                f'Return <strong>{ctx_m.get("total_return", m["total_return"])}%</strong> &nbsp;|&nbsp; '
+                f'Sharpe <strong>{ctx_m.get("sharpe", m["sharpe"])}</strong> &nbsp;|&nbsp; '
+                f'MaxDD <strong>-{ctx_m.get("max_drawdown", m["max_drawdown"])}%</strong> &nbsp;|&nbsp; '
+                f'Risk: <strong>{ctx_m.get("risk_level", m["risk_level"])}</strong>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
@@ -846,6 +854,9 @@ else:
                     st.rerun()
                 except Exception:
                     st.error("Failed to generate response. Please check your API keys in .env file.")
-                    # Remove the pending user message so it doesn't linger without a reply
                     if st.session_state["chat_history"] and st.session_state["chat_history"][-1]["role"] == "user":
                         st.session_state["chat_history"].pop()
+
+    if col_chat is not None:
+        with col_chat:
+            copilot_chat()
