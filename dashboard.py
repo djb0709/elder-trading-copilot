@@ -778,7 +778,7 @@ else:
             # Model selector
             model_choice = st.selectbox(
                 "Model",
-                ["Llama 3.3 (Groq)", "GPT-4o-mini (OpenAI)"],
+                ["Llama 3.3 70B (Groq)", "Llama 3.1 8B (Groq)", "Mixtral 8x7B (Groq)", "GPT-4o-mini (OpenAI)"],
                 label_visibility="collapsed",
             )
 
@@ -867,7 +867,7 @@ else:
                         response = generate_response(prompt, model_choice)
                         status.update(label="Done", state="complete", expanded=False)
 
-                    model_short = "Llama 3.3" if "Groq" in model_choice else "GPT-4o-mini"
+                    model_short = model_choice.split(" (")[0]
                     meta = f"\n\n---\n*{model_short} | {len(retrieved)} chunks retrieved*"
                     full_response = response + meta
 

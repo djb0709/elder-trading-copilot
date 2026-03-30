@@ -191,13 +191,18 @@ def generate_response(prompt, model_choice, groq_key=None, openai_key=None):
         "dashboard context. Be helpful, accurate, and concise."
     )
 
-    if "Groq" in model_choice:
+    groq_models = {
+        "Llama 3.3 70B (Groq)": "llama-3.3-70b-versatile",
+        "Llama 3.1 8B (Groq)": "llama-3.1-8b-instant",
+        "Mixtral 8x7B (Groq)": "mixtral-8x7b-32768",
+    }
+    if model_choice in groq_models:
         key = groq_key or os.getenv("GROQ_API_KEY")
         if not key:
             return "Error: GROQ_API_KEY not found. Please add it to your .env file."
         client = Groq(api_key=key)
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=groq_models[model_choice],
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": prompt},
