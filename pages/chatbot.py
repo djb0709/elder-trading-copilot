@@ -6,7 +6,10 @@ import sys, os, time
 import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from rag import load_or_build_vector_store, retrieve, build_prompt, generate_response
+from rag import (
+    load_or_build_vector_store, retrieve, build_prompt,
+    generate_response, build_vector_store_for_model, EMBEDDING_MODELS,
+)
 
 st.set_page_config(page_title="RAG Pipeline Explorer", page_icon="data/elder_jpa.png", layout="wide")
 
@@ -15,7 +18,10 @@ st.set_page_config(page_title="RAG Pipeline Explorer", page_icon="data/elder_jpa
 def init_rag():
     return load_or_build_vector_store()
 
-vector_store = init_rag()
+@st.cache_resource(show_spinner="Building index with new embedding model …")
+def init_rag_with_model(model_key):
+    return build_vector_store_for_model(model_key)
+
 
 # ── CSS ─────────────────────────────────────────────────────
 st.markdown("""
@@ -129,6 +135,12 @@ with st.sidebar:
     from components import render_sidebar_header
     render_sidebar_header()
     st.header("RAG Settings")
+    embedding_choice = st.selectbox(
+        "Embedding Model",
+        list(EMBEDDING_MODELS.keys()),
+        index=0,
+        help="bge-small: fast & light | bge-base: higher quality | MiniLM: classic baseline",
+    )
     model_choice = st.selectbox(
         "LLM Model",
         ["Llama 3.3 70B (Groq)", "Llama 3.1 8B (Groq)", "Mixtral 8x7B (Groq)", "GPT-4o-mini (OpenAI)"],
@@ -150,6 +162,11 @@ with st.sidebar:
         st.session_state["debug_chat_history"] = []
         st.rerun()
 
+# Load vector store based on embedding model choice
+if embedding_choice == "bge-small-en-v1.5":
+    vector_store = init_rag()  # use pre-built index
+else:
+    vector_store = init_rag_with_model(embedding_choice)
 
 dashboard_ctx = None
 if use_dashboard and "backtest_results" in st.session_state:

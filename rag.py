@@ -31,10 +31,17 @@ FAISS_INDEX_PATH = os.path.join(ROOT_DIR, "faiss_index")
 
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
+EMBEDDING_MODELS = {
+    "bge-small-en-v1.5": "BAAI/bge-small-en-v1.5",
+    "bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
+    "all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
+}
 
-def get_embedding_model():
+
+def get_embedding_model(model_name=None):
     """Get the embedding model (needed for both building and querying)."""
-    return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+    name = model_name or EMBEDDING_MODEL_NAME
+    return HuggingFaceEmbeddings(model_name=name)
 
 
 def load_documents():
@@ -66,11 +73,20 @@ def load_documents():
     return docs
 
 
-def build_vector_store(docs):
+def build_vector_store(docs, model_name=None):
     """Create FAISS index from documents."""
-    embedding_model = get_embedding_model()
+    embedding_model = get_embedding_model(model_name)
     vector_store = FAISS.from_documents(docs, embedding_model)
     return vector_store, embedding_model
+
+
+def build_vector_store_for_model(model_key):
+    """Build a fresh FAISS index using the specified embedding model."""
+    model_name = EMBEDDING_MODELS.get(model_key, EMBEDDING_MODEL_NAME)
+    docs = load_documents()
+    embedding_model = get_embedding_model(model_name)
+    vector_store = FAISS.from_documents(docs, embedding_model)
+    return vector_store
 
 
 def load_or_build_vector_store():
