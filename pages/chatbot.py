@@ -10,8 +10,35 @@ from rag import (
     load_or_build_vector_store, retrieve, build_prompt,
     generate_response, build_vector_store_for_model, EMBEDDING_MODELS,
 )
+from components import ghost_autocomplete
 
 st.set_page_config(page_title="RAG Pipeline Explorer", page_icon="data/elder_jpa.png", layout="wide")
+
+CHAT_SUGGESTIONS = [
+    "What is the Triple Screen Trading System?",
+    "What are the three screens in Elder's strategy?",
+    "How does the RSI indicator work?",
+    "How should I set RSI parameters?",
+    "What are the RSI overbought and oversold thresholds?",
+    "How should I set MACD parameters?",
+    "How does MACD generate buy and sell signals?",
+    "How to choose short-term and long-term EMA windows?",
+    "What is the difference between EMA and SMA?",
+    "When should I enter a long position?",
+    "When should I enter a short position?",
+    "What are the three conditions for going long?",
+    "What are the three conditions for going short?",
+    "What is Elder's 2% Rule?",
+    "What is Elder's 6% Rule?",
+    "How should I set a stop loss?",
+    "How to interpret maximum drawdown?",
+    "How to understand the Sharpe Ratio?",
+    "How to avoid overfitting in backtesting?",
+    "How to optimize backtest results?",
+    "What are the key points of trading psychology?",
+    "How to overcome fear in trading?",
+    "What trading books do you recommend?",
+]
 
 # ── RAG init ────────────────────────────────────────────────
 @st.cache_resource(show_spinner="Loading RAG index …")
@@ -282,9 +309,14 @@ for col, (label, full) in zip(qcols, prompts):
         if st.button(label, use_container_width=True):
             quick_query = full
 
-# ── Chat input ──────────────────────────────────────────────
-query = st.chat_input("Ask about Elder's trading strategy …")
-query = quick_query or query
+# Ghost autocomplete input
+ghost_query = ghost_autocomplete(
+    suggestions=CHAT_SUGGESTIONS,
+    placeholder="Type a keyword, e.g.: RSI, MACD, stop loss, trend...",
+    key="ghost_autocomplete",
+)
+
+query = quick_query or ghost_query
 
 if query:
     try:

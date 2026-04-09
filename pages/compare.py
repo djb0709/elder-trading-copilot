@@ -10,6 +10,7 @@ from rag import (
     load_or_build_vector_store, retrieve, build_prompt,
     generate_response, build_vector_store_for_model, EMBEDDING_MODELS,
 )
+from components import ghost_autocomplete, CHAT_SUGGESTIONS
 
 st.set_page_config(page_title="RAG Compare", page_icon="data/elder_jpa.png", layout="wide")
 
@@ -95,7 +96,12 @@ st.markdown(
 )
 
 # ── Query input ─────────────────────────────────────────────
-query = st.chat_input("Enter a query to compare...")
+ghost_query = ghost_autocomplete(
+    suggestions=CHAT_SUGGESTIONS,
+    placeholder="Type a keyword to compare pipelines...",
+    key="compare_ghost",
+)
+query = ghost_query
 
 if query:
     col_left, col_right = st.columns(2)
