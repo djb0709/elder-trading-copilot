@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; background: transparent; }
+    body { padding: 6px 2px 8px; }
+
+    /* ── Suggestion chips bar ── */
+    .sug-bar {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin-bottom: 10px; min-height: 32px; align-items: center;
+    }
+    .bar-lbl { font-size: 13px; color: #94a3b8; margin-right: 2px; white-space: nowrap; flex-shrink: 0; }
+    .chip {
+      padding: 6px 14px; border-radius: 20px;
+      border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b;
+      font-size: 13px; cursor: pointer; transition: all 0.12s;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;
+    }
+    .chip:hover          { border-color: #3b82f6; color: #1e40af; background: #eff6ff; }
+    .chip.top            { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; font-weight: 500; }
+    .chip.active         { border-color: #2563eb; color: #1e40af; background: #dbeafe; }
+    .no-sug              { font-size: 13px; color: #cbd5e1; font-style: italic; }
+
+    /* ── Input row ── */
+    .inp-wrap { position: relative; width: 100%; }
+    .ifont {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 16px; font-weight: 400; line-height: 1.5; letter-spacing: 0;
+    }
+    .inp-bg   { position: absolute; inset: 0; background: #fff; border-radius: 12px; z-index: 0; }
+    .ghost    {
+      position: absolute; inset: 0; z-index: 1;
+      padding: 14px 110px 14px 18px;
+      pointer-events: none; white-space: nowrap; overflow: hidden;
+      display: flex; align-items: center;
+    }
+    .ghost-txt { color: #c8d3df; }
+    .real-inp {
+      position: relative; z-index: 2; width: 100%;
+      padding: 14px 110px 14px 18px;
+      border: 2px solid #e2e8f0; border-radius: 12px;
+      background: transparent; color: #0f172a; outline: none;
+      font-size: 16px;
+    }
+    .real-inp::placeholder { color: #a0aec0; }
+    .real-inp:focus { border-color: #3b82f6; box-shadow: 0 0 0 4px rgba(59,130,246,0.12); }
+    .send-btn {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 3;
+      background: linear-gradient(135deg, #3b82f6, #6366f1);
+      border: none; border-radius: 10px;
+      color: #fff; padding: 9px 20px;
+      font-size: 14px; font-weight: 600; letter-spacing: 0.3px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(99,102,241,0.35);
+      transition: all 0.18s ease;
+    }
+    .send-btn:hover {
+      background: linear-gradient(135deg, #2563eb, #4f46e5);
+      box-shadow: 0 4px 14px rgba(99,102,241,0.45);
+      transform: translateY(-50%) translateY(-1px);
+    }
+    .send-btn:active {
+      transform: translateY(-50%) translateY(1px);
+      box-shadow: 0 1px 4px rgba(99,102,241,0.3);
+    }
+
+    /* ── Keyboard hints ── */
+    .hints { margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .hint  { font-size: 12px; color: #b0bec5; }
+    kbd {
+      background: #f1f5f9; border: 1px solid #dde3eb; border-radius: 3px;
+      padding: 1px 5px; font-size: 11px; color: #78909c; font-family: inherit;
+    }
+
+    /* hidden text-width ruler — must match .real-inp font exactly */
+    #ruler { position: fixed; visibility: hidden; white-space: pre; top: 0; left: -9999px; font-size: 16px; }
+  </style>
+</head>
+<body>
+
+<div class="sug-bar" id="sugBar">
+  <span class="no-sug">Loading…</span>
+</div>
+
+<div class="inp-wrap">
+  <div class="inp-bg"></div>
+  <div class="ghost ifont" id="ghost"></div>
+  <input class="real-inp ifont" id="inp" type="text"
+    autocomplete="off" spellcheck="false" placeholder="Type a keyword…">
+  <button class="send-btn" id="sendBtn">Send</button>
+</div>
+
+<div class="hints">
+  <span class="hint"><kbd>Tab</kbd> complete</span>
+  <span class="hint"><kbd>Enter</kbd> send</span>
+  <span class="hint"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+  <span class="hint"><kbd>Esc</kbd> clear</span>
+</div>
+
+<span class="ifont" id="ruler"></span>
+
+<script>
+// ── Streamlit messaging ─────────────────────────────────────────
+function toSt(msg) {
+  window.parent.postMessage(Object.assign({ isStreamlitMessage: true }, msg), "*");
+}
+function stReady()       { toSt({ type: "streamlit:componentReady", apiVersion: 1 }); }
+function stHeight()      { toSt({ type: "streamlit:setFrameHeight", height: document.body.scrollHeight + 6 }); }
+function stValue(val)    { toSt({ type: "streamlit:setComponentValue", value: val }); }
+
+// ── DOM refs ────────────────────────────────────────────────────
+const inp     = document.getElementById('inp');
+const ghost   = document.getElementById('ghost');
+const sugBar  = document.getElementById('sugBar');
+const sendBtn = document.getElementById('sendBtn');
+const ruler   = document.getElementById('ruler');
+
+// ── State ───────────────────────────────────────────────────────
+let SUGS = [], matches = [], selIdx = -1;
+
+// ── Fuzzy match ─────────────────────────────────────────────────
+function score(s, q) {
+  const sl = s.toLowerCase(), ql = q.toLowerCase().trim();
+  if (!ql) return 0.5;
+  if (sl.startsWith(ql))     return 0.95 + ql.length / sl.length * 0.05;
+  const i = sl.indexOf(ql);
+  if (i >= 0)                return 0.85 - i * 0.005;
+  const hits = ql.split(/\s+/).filter(w => w.length > 1 && sl.includes(w)).length;
+  return hits ? hits / ql.split(/\s+/).length * 0.75 : 0;
+}
+
+function getMatches(q) {
+  if (!q || !q.trim()) return SUGS.slice(0, 5).map(s => ({ t: s }));
+  return SUGS.map(s => ({ t: s, sc: score(s, q) }))
+             .filter(x => x.sc > 0.15)
+             .sort((a, b) => b.sc - a.sc)
+             .slice(0, 5);
+}
+
+// ── Render suggestion bar ───────────────────────────────────────
+function renderBar() {
+  sugBar.innerHTML = '';
+  if (!matches.length) {
+    sugBar.innerHTML = '<span class="no-sug">No matches found.</span>';
+    return;
+  }
+  const lbl = document.createElement('span');
+  lbl.className = 'bar-lbl';
+  lbl.textContent = inp.value.trim() ? '🎯 Matches:' : '💡 Popular:';
+  sugBar.appendChild(lbl);
+  matches.forEach((m, i) => {
+    const c = document.createElement('span');
+    c.className = 'chip'
+      + (i === 0 && inp.value.trim() ? ' top' : '')
+      + (i === selIdx ? ' active' : '');
+    c.textContent = m.t;
+    c.title = m.t;
+    c.addEventListener('click', () => submit(m.t));
+    sugBar.appendChild(c);
+  });
+}
+
+// ── Ghost text overlay ──────────────────────────────────────────
+function renderGhost() {
+  ghost.innerHTML = '';
+  const q = inp.value;
+  if (!q || !matches.length) return;
+  const best = selIdx >= 0 ? matches[selIdx].t : matches[0].t;
+  ruler.textContent = q;
+  const w = ruler.getBoundingClientRect().width;
+  const spacer = document.createElement('span');
+  spacer.style.cssText = `display:inline-block;width:${w}px;flex-shrink:0`;
+  const txt = document.createElement('span');
+  txt.className = 'ghost-txt';
+  txt.textContent = best.toLowerCase().startsWith(q.toLowerCase())
+    ? best.slice(q.length)
+    : '  → ' + best;
+  ghost.appendChild(spacer);
+  ghost.appendChild(txt);
+}
+
+// ── Submit ──────────────────────────────────────────────────────
+function submit(text) {
+  if (!text || !text.trim()) return;
+  // Send {text, id} — Python wrapper uses id for deduplication across reruns
+  stValue({ text: text.trim(), id: Date.now() });
+  inp.value = '';
+  ghost.innerHTML = '';
+  selIdx = -1;
+  matches = getMatches('');
+  renderBar();
+  setTimeout(stHeight, 50);
+  inp.focus();
+}
+
+// ── Keyboard ────────────────────────────────────────────────────
+inp.addEventListener('input', () => {
+  selIdx = -1;
+  matches = getMatches(inp.value);
+  renderBar(); renderGhost();
+});
+
+inp.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    if (matches.length) {
+      inp.value = matches[selIdx >= 0 ? selIdx : 0].t;
+      selIdx = -1; matches = getMatches(inp.value);
+      renderBar(); renderGhost();
+    }
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    submit(inp.value.trim() || (selIdx >= 0 && matches[selIdx] ? matches[selIdx].t : ''));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (matches.length) { selIdx = selIdx <= 0 ? matches.length - 1 : selIdx - 1; renderBar(); renderGhost(); }
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (matches.length) { selIdx = selIdx >= matches.length - 1 ? 0 : selIdx + 1; renderBar(); renderGhost(); }
+  } else if (e.key === 'Escape') {
+    inp.value = ''; ghost.innerHTML = ''; selIdx = -1;
+    matches = getMatches(''); renderBar();
+  }
+});
+
+sendBtn.addEventListener('click', () => submit(inp.value.trim()));
+
+// ── Receive props from Streamlit ────────────────────────────────
+window.addEventListener('message', e => {
+  if (!e.data || e.data.type !== 'streamlit:render') return;
+  const args = e.data.args || {};
+  if (Array.isArray(args.suggestions) && args.suggestions.length) {
+    SUGS = args.suggestions;
+  }
+  if (args.placeholder) inp.placeholder = args.placeholder;
+  matches = getMatches(inp.value);
+  renderBar(); renderGhost();
+  setTimeout(stHeight, 80);
+});
+
+// ── Boot ────────────────────────────────────────────────────────
+matches = getMatches('');
+renderBar();
+stReady();              // tell Streamlit we're ready → it will send streamlit:render with props
+setTimeout(stHeight, 80);
+</script>
+</body>
+</html>

@@ -9,6 +9,7 @@ from rag import (
     retrieve, build_prompt, generate_response,
     build_vector_store_for_model, EMBEDDING_MODELS,
 )
+from components import ghost_autocomplete, CHAT_SUGGESTIONS
 
 # ============================================================
 # Page Config
@@ -853,9 +854,14 @@ else:
                     st.session_state["chat_history"] = []
                     st.rerun()
 
-            # Chat input
-            user_input = st.chat_input("Ask about Elder's strategy...", disabled=generating)
-            query = welcome_query or quick_query or user_input
+            # Ghost autocomplete input
+            ghost_input = ghost_autocomplete(
+                suggestions=CHAT_SUGGESTIONS,
+                placeholder="Type a keyword, e.g.: RSI, MACD, stop loss, trend...",
+                key="dashboard_ghost",
+            ) if not generating else None
+
+            query = welcome_query or quick_query or ghost_input
 
             # Step 1: New query → save it, set generating, rerun to disable UI
             if query and not generating:
