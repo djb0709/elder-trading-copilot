@@ -2,7 +2,7 @@
 RAG Chatbot — Visualises every stage of the retrieval-augmented generation pipeline.
 """
 
-import sys, os, time
+import sys, os, time, html
 import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -10,35 +10,7 @@ from rag import (
     load_or_build_vector_store, retrieve_with_scores, build_prompt,
     generate_response, build_vector_store_for_model, EMBEDDING_MODELS,
 )
-from components import ghost_autocomplete
-
-st.set_page_config(page_title="RAG Pipeline Explorer", page_icon="data/elder_jpa.png", layout="wide")
-
-CHAT_SUGGESTIONS = [
-    "What is the Triple Screen Trading System?",
-    "What are the three screens in Elder's strategy?",
-    "How does the RSI indicator work?",
-    "How should I set RSI parameters?",
-    "What are the RSI overbought and oversold thresholds?",
-    "How should I set MACD parameters?",
-    "How does MACD generate buy and sell signals?",
-    "How to choose short-term and long-term EMA windows?",
-    "What is the difference between EMA and SMA?",
-    "When should I enter a long position?",
-    "When should I enter a short position?",
-    "What are the three conditions for going long?",
-    "What are the three conditions for going short?",
-    "What is Elder's 2% Rule?",
-    "What is Elder's 6% Rule?",
-    "How should I set a stop loss?",
-    "How to interpret maximum drawdown?",
-    "How to understand the Sharpe Ratio?",
-    "How to avoid overfitting in backtesting?",
-    "How to optimize backtest results?",
-    "What are the key points of trading psychology?",
-    "How to overcome fear in trading?",
-    "What trading books do you recommend?",
-]
+from components import ghost_autocomplete, CHAT_SUGGESTIONS
 
 # ── RAG init ────────────────────────────────────────────────
 @st.cache_resource(show_spinner="Loading RAG index …")
@@ -216,6 +188,8 @@ if "debug_chat_history" not in st.session_state:
 
 def _confidence_card(scores):
     """Build the HTML for the RAG confidence indicator card."""
+    if not scores:
+        return ""
     # Convert FAISS L2 distances to 0-1 similarity scores
     sim_scores = [1 / (1 + d) for d in scores]
     avg = sum(sim_scores) / len(sim_scores)
@@ -270,7 +244,7 @@ def render_pipeline(entry, expanded=False):
         f'<span class="step-badge" style="background:#2196F3">1</span>'
         f'<span class="step-title">User Query</span>'
         f'</div>'
-        f'<span style="font-size:.9rem">{entry["query"]}</span>'
+        f'<span style="font-size:.9rem">{html.escape(entry["query"])}</span>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -338,7 +312,7 @@ def render_pipeline(entry, expanded=False):
         f'<span class="step-subtitle">{entry["model"]} &nbsp;|&nbsp; temp 0.3 &nbsp;|&nbsp; max 1024 tokens'
         f'{t_generate_html}'
         f'</span></div>'
-        f'<div class="response-text">{entry["response"]}</div>'
+        f'<div class="response-text">{html.escape(entry["response"])}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )

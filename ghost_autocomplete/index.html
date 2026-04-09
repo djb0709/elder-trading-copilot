@@ -18,7 +18,7 @@
       padding: 6px 14px; border-radius: 20px;
       border: 1px solid #e2e8f0; background: #f8fafc; color: #64748b;
       font-size: 13px; cursor: pointer; transition: all 0.12s;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;
+      white-space: nowrap;
     }
     .chip:hover          { border-color: #3b82f6; color: #1e40af; background: #eff6ff; }
     .chip.top            { border-color: #3b82f6; color: #1d4ed8; background: #eff6ff; font-weight: 500; }
@@ -134,11 +134,11 @@ function score(s, q) {
 }
 
 function getMatches(q) {
-  if (!q || !q.trim()) return SUGS.slice(0, 5).map(s => ({ t: s }));
+  if (!q || !q.trim()) return SUGS.slice(0, 3).map(s => ({ t: s }));
   return SUGS.map(s => ({ t: s, sc: score(s, q) }))
              .filter(x => x.sc > 0.15)
              .sort((a, b) => b.sc - a.sc)
-             .slice(0, 5);
+             .slice(0, 3);
 }
 
 // ── Render suggestion bar ───────────────────────────────────────
