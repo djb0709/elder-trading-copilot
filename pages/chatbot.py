@@ -7,7 +7,7 @@ import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rag import (
-    load_or_build_vector_store, retrieve, build_prompt,
+    load_or_build_vector_store, retrieve_with_scores, build_prompt,
     generate_response, build_vector_store_for_model, EMBEDDING_MODELS,
 )
 from components import ghost_autocomplete
@@ -131,6 +131,15 @@ st.markdown("""
     background:#f8f9fb;border-radius:10px;padding:.9rem 1rem;
     font-size:.9rem;line-height:1.6;color:#222;
 }
+
+/* ---------- confidence indicator ---------- */
+.confidence-bar{height:8px;border-radius:4px;background:#e2e8f0;overflow:hidden;margin:8px 0;}
+.confidence-fill{height:100%;border-radius:4px;transition:width 0.5s;}
+.confidence-high  {background:linear-gradient(90deg,#22c55e,#16a34a);}
+.confidence-medium{background:linear-gradient(90deg,#f59e0b,#d97706);}
+.confidence-low   {background:linear-gradient(90deg,#ef4444,#dc2626);}
+.score-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px;margin-top:8px;}
+.score-item{font-size:.75rem;color:#64748b;padding:2px 8px;background:#f8fafc;border-radius:4px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -205,6 +214,52 @@ if "debug_chat_history" not in st.session_state:
 
 # ── Helpers ─────────────────────────────────────────────────
 
+def _confidence_card(scores):
+    """Build the HTML for the RAG confidence indicator card."""
+    # Convert FAISS L2 distances to 0-1 similarity scores
+    sim_scores = [1 / (1 + d) for d in scores]
+    avg = sum(sim_scores) / len(sim_scores)
+    pct = int(avg * 100)
+
+    if avg > 0.7:
+        level, label, css_class = "🟢", "High Confidence", "confidence-high"
+        tip = ""
+    elif avg >= 0.4:
+        level, label, css_class = "🟡", "Medium Confidence", "confidence-medium"
+        tip = ""
+    else:
+        level, label, css_class = "🔴", "Low Confidence", "confidence-low"
+        tip = (
+            '<p style="font-size:.78rem;color:#ef4444;margin-top:.5rem;">'
+            "⚠️ The knowledge base may not have sufficient information on this topic. "
+            "Consider adding more relevant documents."
+            "</p>"
+        )
+
+    score_items = "".join(
+        f'<span class="score-item">Chunk #{i+1}: {s:.2f}</span>'
+        for i, s in enumerate(sim_scores)
+    )
+
+    return (
+        f'<div class="step-card">'
+        f'<div class="step-header">'
+        f'<span class="step-badge" style="background:#6366f1">📊</span>'
+        f'<span class="step-title">RAG Confidence</span>'
+        f'</div>'
+        f'<div style="font-size:.88rem;font-weight:600;color:#334155;">'
+        f'{level} {label} ({pct}%)'
+        f'</div>'
+        f'<div class="confidence-bar">'
+        f'<div class="confidence-fill {css_class}" style="width:{pct}%"></div>'
+        f'</div>'
+        f'<div style="font-size:.75rem;color:#94a3b8;margin-bottom:4px;">Score breakdown:</div>'
+        f'<div class="score-grid">{score_items}</div>'
+        f'{tip}'
+        f'</div>'
+    )
+
+
 def render_pipeline(entry, expanded=False):
     """Render a full pipeline trace for one Q&A pair."""
 
@@ -262,6 +317,10 @@ def render_pipeline(entry, expanded=False):
         f'</div>',
         unsafe_allow_html=True,
     )
+
+    # Confidence indicator (between Step 3 and Step 4)
+    if entry.get("retrieval_scores"):
+        st.markdown(_confidence_card(entry["retrieval_scores"]), unsafe_allow_html=True)
 
     # Step 4 — Prompt Assembly
     with st.expander("Step 4 — Assembled Prompt", expanded=expanded):
@@ -324,7 +383,7 @@ if query:
         with st.status("Running RAG pipeline...", expanded=True) as status:
             status.update(label="Embedding query...", state="running")
             t0 = time.perf_counter()
-            retrieved_docs = retrieve(vector_store, query, k=top_k)
+            retrieved_docs, retrieval_scores = retrieve_with_scores(vector_store, query, k=top_k)
             t_retrieve = f"{(time.perf_counter()-t0)*1000:.0f} ms"
             status.update(label=f"Retrieved {len(retrieved_docs)} chunks ({t_retrieve})", state="running")
 
@@ -353,6 +412,7 @@ if query:
             "top_k": top_k,
             "t_retrieve": t_retrieve,
             "t_generate": t_generate,
+            "retrieval_scores": retrieval_scores,
         }
 
         st.session_state["debug_chat_history"].append(entry)

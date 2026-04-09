@@ -125,6 +125,14 @@ def retrieve(vector_store, query, k=5):
     return vector_store.similarity_search(query, k=k)
 
 
+def retrieve_with_scores(vector_store, query, k=5):
+    """Retrieve top-k chunks with their FAISS L2 distances."""
+    results = vector_store.similarity_search_with_score(query, k=k)
+    docs = [doc for doc, _ in results]
+    scores = [score for _, score in results]
+    return docs, scores
+
+
 def build_prompt(query, retrieved_docs, dashboard_context=None):
     """Build the full prompt with dashboard context + RAG context."""
     rag_parts = []
