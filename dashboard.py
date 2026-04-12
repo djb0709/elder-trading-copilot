@@ -616,18 +616,38 @@ with st.sidebar:
 # Load data & run backtest
 # ============================================================
 
-@st.cache_data(show_spinner="Downloading stock data...")
+@st.cache_data(show_spinner="Downloading stock data...", ttl=3600)
 def load_stock(tk, start, end):
-    stock = yf.download(tk, start=start, end=end)
+    stock = yf.download(tk, start=start, end=end, progress=False, threads=False)
     if isinstance(stock.columns, pd.MultiIndex):
-        stock = stock.xs(tk, axis=1, level="Ticker")
+        try:
+            stock = stock.xs(tk, axis=1, level="Ticker")
+        except KeyError:
+            stock = stock.droplevel("Ticker", axis=1)
+    # IMPORTANT: raise instead of returning an empty DataFrame so that
+    # st.cache_data does NOT cache the failure. Otherwise a single transient
+    # Yahoo Finance failure would pin an empty result to the cache key forever,
+    # and users would have to change the date range to dodge it.
+    if stock.empty:
+        raise RuntimeError(f"yfinance returned no data for {tk}")
     return stock
 
-stock = load_stock(ticker, start_date, end_date)
 
-if stock.empty:
-    st.error("No data found. Check ticker or date range.")
-else:
+try:
+    stock = load_stock(ticker, start_date, end_date)
+except RuntimeError:
+    st.error(
+        "Yahoo Finance didn't return any data for this request. "
+        "This is usually a transient rate-limit on the cloud host — "
+        "please try again in a moment, or adjust the date range."
+    )
+    st.stop()
+
+# Indent preserved: the backtest path below used to live inside an
+# `if stock.empty: ... else:` branch. Now the empty check happens inside
+# load_stock (it raises instead of returning empty), and st.stop() above
+# halts execution on failure, so the rest of the page unconditionally runs.
+if True:
     data, buy_signals, sell_signals, long_exit_signals, short_exit_signals, metrics, trade_log = run_backtest(
         stock, win_short, win_long, rsi_lower, rsi_upper, breakout_window, capital, position_pct
     )
