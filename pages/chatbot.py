@@ -177,8 +177,10 @@ else:
     vector_store = init_rag_with_model(embedding_choice)
 
 dashboard_ctx = None
+previous_ctx = None
 if use_dashboard and "backtest_results" in st.session_state:
     dashboard_ctx = st.session_state["backtest_results"]
+    previous_ctx = st.session_state.get("previous_backtest_results", None)
 
 # ── Session state ───────────────────────────────────────────
 if "debug_chat_history" not in st.session_state:
@@ -361,7 +363,7 @@ if query:
             t_retrieve = f"{(time.perf_counter()-t0)*1000:.0f} ms"
             status.update(label=f"Retrieved {len(retrieved_docs)} chunks ({t_retrieve})", state="running")
 
-            prompt = build_prompt(query, retrieved_docs, dashboard_ctx)
+            prompt = build_prompt(query, retrieved_docs, dashboard_ctx, previous_ctx)
             status.update(label=f"Generating response ({model_choice})...", state="running")
 
             t1 = time.perf_counter()

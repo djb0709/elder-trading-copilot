@@ -133,8 +133,13 @@ def retrieve_with_scores(vector_store, query, k=5):
     return docs, scores
 
 
-def build_prompt(query, retrieved_docs, dashboard_context=None):
-    """Build the full prompt with dashboard context + RAG context."""
+def build_prompt(query, retrieved_docs, dashboard_context=None, previous_context=None):
+    """Build the full prompt with dashboard context + RAG context.
+
+    previous_context (optional) holds the most recent prior backtest snapshot —
+    injected so the LLM can explain why results changed when the user tweaks
+    parameters. Same shape as dashboard_context.
+    """
     rag_parts = []
     for i, doc in enumerate(retrieved_docs, 1):
         rag_parts.append(f"[{i}] {doc.page_content}")
@@ -172,6 +177,25 @@ def build_prompt(query, retrieved_docs, dashboard_context=None):
         "- Risk Level: Low if MaxDD < 15%, Medium if < 30%, High if >= 30%\n\n"
     )
 
+    if previous_context:
+        pp = previous_context["params"]
+        pm = previous_context["metrics"]
+        prompt += (
+            f"## Previous Backtest State (before the user's latest change)\n"
+            f"- Ticker: {previous_context['ticker']}\n"
+            f"- Date Range: {previous_context['start_date']} to {previous_context['end_date']}\n"
+            f"- Parameters: EMA={pp['win_short']}/{pp['win_long']}, "
+            f"RSI={pp['rsi_lower']}-{pp['rsi_upper']}, "
+            f"Breakout={pp['breakout_window']}, "
+            f"Capital=${pp.get('capital', 10000):,}, "
+            f"PositionSize={pp.get('position_pct', 100)}%\n"
+            f"- Results: Return {pm['total_return']}%, "
+            f"Sharpe {pm['sharpe']}, "
+            f"MaxDD -{pm['max_drawdown']}%, "
+            f"Trades {pm['trade_count']}, "
+            f"Risk {pm['risk_level']}\n\n"
+        )
+
     if dashboard_context:
         p = dashboard_context["params"]
         m = dashboard_context["metrics"]
@@ -204,6 +228,11 @@ def build_prompt(query, retrieved_docs, dashboard_context=None):
         f"Instructions:\n"
         f"- When the question is about the current setup or performance, "
         f"reference the specific dashboard data and backtest results above.\n"
+        f"- When a Previous Backtest State section is present AND the user is "
+        f"asking why results changed (e.g. 'why did Sharpe drop?', 'why is "
+        f"drawdown worse?', 'what changed?'), explicitly compare the two "
+        f"states — call out which parameters changed and tie each change to "
+        f"the specific metric it most likely affected.\n"
         f"- When the question is about Elder's concepts, use the retrieved knowledge.\n"
         f"- Explain parameters in plain language "
         f"(e.g. 'Breakout Window of 5' means the strategy enters when price "
