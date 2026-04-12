@@ -9,6 +9,11 @@ import streamlit.components.v1 as components
 from typing import List, Optional
 
 
+PRESENTATION_URL = (
+    "https://raw.githack.com/AlanY1an/elder-trading-copilot/main/presentation.html"
+)
+
+
 @st.dialog("About Elder Copilot")
 def show_about():
     """About dialog with project info."""
@@ -18,16 +23,29 @@ def show_about():
         "A context-aware intelligent trading assistant built around "
         "Alexander Elder's Triple Screen Trading System.\n\n"
         "**Features:**\n"
-        "- Interactive backtesting dashboard with 5 linked charts\n"
-        "- RAG-powered chatbot with 877-entry knowledge base\n"
-        "- Dual LLM support (Llama 3.3 via Groq / GPT-4o-mini)\n"
-        "- Real-time context injection from dashboard to chatbot\n\n"
+        "- Interactive backtest dashboard — long **and** short, "
+        "5 linked charts, adjustable capital & position size\n"
+        "- RAG chatbot grounded in an 877-entry Elder knowledge base\n"
+        "- **3 embedding models** (bge-small / bge-base / MiniLM) and "
+        "**4 LLMs** (Llama 3.3 70B · Llama 3.1 8B · Mixtral 8×7B · GPT-4o-mini) "
+        "— any pair A/B testable in the Compare page\n"
+        "- Real-time context injection from dashboard to chatbot, "
+        "with previous-run comparison for parameter tweaks\n\n"
         "**Tech Stack:**\n"
         "Streamlit, Plotly, FAISS, LangChain, BGE Embeddings, "
         "Groq, OpenAI, yfinance\n\n"
         "**Course:** CSYE 7380 — Theory & Practice of Applied AI Generative Models\n\n"
         "**Instructor:** Dr. Yizhen Zhao\n\n"
         "Northeastern University, 2026"
+    )
+    st.markdown(
+        f'<a href="{PRESENTATION_URL}" target="_blank" '
+        'style="display:block; text-align:center; margin:16px 0 8px; '
+        'padding:12px 16px; background:linear-gradient(135deg,#667eea,#764ba2); '
+        'color:#fff; text-decoration:none; border-radius:8px; '
+        'font-weight:600; font-size:0.92rem;">'
+        '📊 View Presentation Slides &nbsp;↗</a>',
+        unsafe_allow_html=True,
     )
     if st.button("Close", use_container_width=True):
         st.rerun()
