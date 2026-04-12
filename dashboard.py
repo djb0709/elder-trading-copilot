@@ -270,6 +270,8 @@ def run_backtest(data, win_short, win_long, rsi_lower, rsi_upper, breakout_windo
     equity_curve = []
     buy_signals = []
     sell_signals = []
+    long_exit_signals = []
+    short_exit_signals = []
     trade_log = []
 
     for i in range(len(data)):
@@ -313,6 +315,7 @@ def run_backtest(data, win_short, win_long, rsi_lower, rsi_upper, breakout_windo
                 "Days Held": i - entry_idx,
             })
             cash += shares * price
+            long_exit_signals.append(i)
             position = 0
             shares = 0
         elif position == -1 and rsi_low:
@@ -329,6 +332,7 @@ def run_backtest(data, win_short, win_long, rsi_lower, rsi_upper, breakout_windo
                 "Days Held": i - entry_idx,
             })
             cash -= shares * price
+            short_exit_signals.append(i)
             position = 0
             shares = 0
 
@@ -366,14 +370,14 @@ def run_backtest(data, win_short, win_long, rsi_lower, rsi_upper, breakout_windo
         "trade_count": trade_count,
         "risk_level": risk_level,
     }
-    return data, buy_signals, sell_signals, metrics, trade_log
+    return data, buy_signals, sell_signals, long_exit_signals, short_exit_signals, metrics, trade_log
 
 # ============================================================
 # Charts
 # ============================================================
 
-def build_charts(data, buy_signals, sell_signals, rsi_lower, rsi_upper, capital=10000,
-                  visible_panels=None):
+def build_charts(data, buy_signals, sell_signals, long_exit_signals, short_exit_signals,
+                  rsi_lower, rsi_upper, capital=10000, visible_panels=None):
     if visible_panels is None:
         visible_panels = ["Price + Signals", "MACD", "RSI", "Equity Curve", "Drawdown"]
 
@@ -429,13 +433,33 @@ def build_charts(data, buy_signals, sell_signals, rsi_lower, rsi_upper, capital=
             fig.add_trace(go.Scatter(
                 x=data.index[buy_signals], y=data["Close"].iloc[buy_signals],
                 mode="markers", name="Long Entry",
-                marker=dict(symbol="triangle-up", size=10, color="#00CC96"), legend=lg,
+                marker=dict(symbol="triangle-up", size=11, color="#00CC96",
+                            line=dict(width=1, color="#ffffff")),
+                legend=lg,
             ), row=r, col=1)
         if sell_signals:
             fig.add_trace(go.Scatter(
                 x=data.index[sell_signals], y=data["Close"].iloc[sell_signals],
                 mode="markers", name="Short Entry",
-                marker=dict(symbol="triangle-down", size=10, color="#EF553B"), legend=lg,
+                marker=dict(symbol="triangle-down", size=11, color="#EF553B",
+                            line=dict(width=1, color="#ffffff")),
+                legend=lg,
+            ), row=r, col=1)
+        if long_exit_signals:
+            fig.add_trace(go.Scatter(
+                x=data.index[long_exit_signals], y=data["Close"].iloc[long_exit_signals],
+                mode="markers", name="Long Exit",
+                marker=dict(symbol="x", size=11, color="#00796B",
+                            line=dict(width=2, color="#00796B")),
+                legend=lg,
+            ), row=r, col=1)
+        if short_exit_signals:
+            fig.add_trace(go.Scatter(
+                x=data.index[short_exit_signals], y=data["Close"].iloc[short_exit_signals],
+                mode="markers", name="Short Exit",
+                marker=dict(symbol="x", size=11, color="#C62828",
+                            line=dict(width=2, color="#C62828")),
+                legend=lg,
             ), row=r, col=1)
         fig.update_yaxes(title_text="Price ($)", row=r, col=1)
 
@@ -604,10 +628,10 @@ stock = load_stock(ticker, start_date, end_date)
 if stock.empty:
     st.error("No data found. Check ticker or date range.")
 else:
-    data, buy_signals, sell_signals, metrics, trade_log = run_backtest(
+    data, buy_signals, sell_signals, long_exit_signals, short_exit_signals, metrics, trade_log = run_backtest(
         stock, win_short, win_long, rsi_lower, rsi_upper, breakout_window, capital, position_pct
     )
-    st.session_state["backtest_results"] = {
+    new_results = {
         "data": data,
         "buy_signals": buy_signals,
         "sell_signals": sell_signals,
@@ -625,6 +649,25 @@ else:
             "position_pct": position_pct,
         },
     }
+
+    # Snapshot the previous run ONLY when something that affects results changed.
+    # Streamlit reruns the script on every interaction, so we must not overwrite
+    # previous_backtest_results on no-op reruns (that would lose the real history).
+    def _result_fingerprint(r):
+        if not r:
+            return None
+        return (
+            r.get("ticker"),
+            r.get("start_date"),
+            r.get("end_date"),
+            tuple(sorted((r.get("params") or {}).items())),
+        )
+
+    existing = st.session_state.get("backtest_results")
+    if existing and _result_fingerprint(existing) != _result_fingerprint(new_results):
+        st.session_state["previous_backtest_results"] = existing
+
+    st.session_state["backtest_results"] = new_results
 
     m = metrics
 
@@ -713,7 +756,8 @@ else:
         col_chat = None
 
     with col_dash:
-        fig = build_charts(data, buy_signals, sell_signals, rsi_lower, rsi_upper, capital, visible_panels)
+        fig = build_charts(data, buy_signals, sell_signals, long_exit_signals, short_exit_signals,
+                           rsi_lower, rsi_upper, capital, visible_panels)
         st.plotly_chart(fig, use_container_width=True)
 
         # Trade log table
@@ -880,13 +924,14 @@ else:
             pending = st.session_state.pop("pending_query", None)
             if pending and generating:
                 dashboard_ctx = st.session_state.get("backtest_results", None)
+                previous_ctx = st.session_state.get("previous_backtest_results", None)
 
                 try:
                     with st.status("Running RAG pipeline...", expanded=True) as status:
                         status.update(label="Embedding query...", state="running")
                         retrieved = retrieve(vector_store, pending, k=5)
                         status.update(label=f"Retrieved {len(retrieved)} chunks", state="running")
-                        prompt = build_prompt(pending, retrieved, dashboard_ctx)
+                        prompt = build_prompt(pending, retrieved, dashboard_ctx, previous_ctx)
                         status.update(label=f"Generating response ({model_choice})...", state="running")
                         response = generate_response(prompt, model_choice)
                         status.update(label="Done", state="complete", expanded=False)
