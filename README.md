@@ -236,6 +236,3 @@ QA pairs are not chunked further -- each question-answer pair is embedded as a s
 
 ---
 
-## License
-
-This project was developed for educational purposes as part of the CSYE 7380 course (Theory and Practice of Applied AI Generative Models) at Northeastern University, taught by Dr. Yizhen Zhao.
