@@ -29,12 +29,21 @@ KB_PATH = os.path.join(DATA_DIR, "knowledge_base.csv")
 TEXT_PATH = os.path.join(DATA_DIR, "elder_new_high_new_low.txt")
 FAISS_INDEX_PATH = os.path.join(ROOT_DIR, "faiss_index")
 
-EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+# Default chosen by eval_retrieval.py (best Recall@K among the three models)
+DEFAULT_EMBEDDING_KEY = "bge-base-en-v1.5"
+EMBEDDING_MODEL_NAME = "BAAI/bge-base-en-v1.5"
 
+# First entry is the default in every selectbox (index=0)
 EMBEDDING_MODELS = {
-    "bge-small-en-v1.5": "BAAI/bge-small-en-v1.5",
     "bge-base-en-v1.5": "BAAI/bge-base-en-v1.5",
+    "bge-small-en-v1.5": "BAAI/bge-small-en-v1.5",
     "all-MiniLM-L6-v2": "sentence-transformers/all-MiniLM-L6-v2",
+}
+
+EMBEDDING_DIMS = {
+    "bge-base-en-v1.5": 768,
+    "bge-small-en-v1.5": 384,
+    "all-MiniLM-L6-v2": 384,
 }
 
 

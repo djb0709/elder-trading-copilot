@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rag import (
     load_or_build_vector_store, retrieve, build_prompt,
     generate_response, build_vector_store_for_model, EMBEDDING_MODELS,
+    DEFAULT_EMBEDDING_KEY,
 )
 from components import ghost_autocomplete, CHAT_SUGGESTIONS
 
@@ -166,9 +167,9 @@ if query:
     with st.status("Running both pipelines...", expanded=True) as status:
         if compare_mode == "Embedding Models":
             status.update(label=f"Building left: {left}...")
-            vs_left = get_default_vs() if left == "bge-small-en-v1.5" else get_vs_for_model(left)
+            vs_left = get_default_vs() if left == DEFAULT_EMBEDDING_KEY else get_vs_for_model(left)
             status.update(label=f"Building right: {right}...")
-            vs_right = get_default_vs() if right == "bge-small-en-v1.5" else get_vs_for_model(right)
+            vs_right = get_default_vs() if right == DEFAULT_EMBEDDING_KEY else get_vs_for_model(right)
 
             status.update(label="Retrieving left...")
             r_left = run_pipeline(vs_left, query, top_k, None, f"Embedding: {left}", skip_llm=True)
@@ -177,7 +178,7 @@ if query:
 
         elif compare_mode == "LLM Models":
             status.update(label=f"Loading {embedding_for_llm} index...")
-            vs = get_default_vs() if embedding_for_llm == "bge-small-en-v1.5" else get_vs_for_model(embedding_for_llm)
+            vs = get_default_vs() if embedding_for_llm == DEFAULT_EMBEDDING_KEY else get_vs_for_model(embedding_for_llm)
             status.update(label=f"Running {left}...")
             r_left = run_pipeline(vs, query, top_k, left, f"LLM: {left.split(' (')[0]}")
             status.update(label=f"Running {right}...")
@@ -185,7 +186,7 @@ if query:
 
         else:  # Top-K
             status.update(label=f"Loading {embedding_for_topk} index...")
-            vs = get_default_vs() if embedding_for_topk == "bge-small-en-v1.5" else get_vs_for_model(embedding_for_topk)
+            vs = get_default_vs() if embedding_for_topk == DEFAULT_EMBEDDING_KEY else get_vs_for_model(embedding_for_topk)
             status.update(label=f"Running Top-{left}...")
             r_left = run_pipeline(vs, query, left, llm, f"Top-K: {left}")
             status.update(label=f"Running Top-{right}...")

@@ -7,7 +7,7 @@ from plotly.subplots import make_subplots
 from rag import (
     load_or_build_vector_store,
     retrieve, build_prompt, generate_response,
-    build_vector_store_for_model, EMBEDDING_MODELS,
+    build_vector_store_for_model, EMBEDDING_MODELS, DEFAULT_EMBEDDING_KEY,
 )
 from components import ghost_autocomplete, CHAT_SUGGESTIONS
 
@@ -860,7 +860,7 @@ if True:
                 )
 
             # Load vector store based on embedding choice
-            if emb_choice == "bge-small-en-v1.5":
+            if emb_choice == DEFAULT_EMBEDDING_KEY:
                 vector_store = init_rag()
             else:
                 vector_store = init_rag_with_model(emb_choice)

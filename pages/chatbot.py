@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rag import (
     load_or_build_vector_store, retrieve_with_scores, build_prompt,
     generate_response, build_vector_store_for_model, EMBEDDING_MODELS,
+    DEFAULT_EMBEDDING_KEY, EMBEDDING_DIMS,
 )
 from components import ghost_autocomplete, CHAT_SUGGESTIONS
 
@@ -147,7 +148,7 @@ with st.sidebar:
         "Embedding Model",
         list(EMBEDDING_MODELS.keys()),
         index=0,
-        help="bge-small: fast & light | bge-base: higher quality | MiniLM: classic baseline",
+        help="bge-base: best recall (default) | bge-small: fast & light | MiniLM: classic baseline",
     )
     model_choice = st.selectbox(
         "LLM Model",
@@ -171,7 +172,7 @@ with st.sidebar:
         st.rerun()
 
 # Load vector store based on embedding model choice
-if embedding_choice == "bge-small-en-v1.5":
+if embedding_choice == DEFAULT_EMBEDDING_KEY:
     vector_store = init_rag()  # use pre-built index
 else:
     vector_store = init_rag_with_model(embedding_choice)
@@ -252,15 +253,17 @@ def render_pipeline(entry, expanded=False):
     )
 
     # Step 2 — Embedding
+    emb = entry.get("embedding", DEFAULT_EMBEDDING_KEY)
+    dim = EMBEDDING_DIMS.get(emb, 384)
     st.markdown(
         f'<div class="step-card">'
         f'<div class="step-header">'
         f'<span class="step-badge" style="background:#00897B">2</span>'
         f'<span class="step-title">Embed Query</span>'
-        f'<span class="step-subtitle">Model: bge-small-en-v1.5 &nbsp;|&nbsp; Dim: 384</span>'
+        f'<span class="step-subtitle">Model: {emb} &nbsp;|&nbsp; Dim: {dim}</span>'
         f'</div>'
         f'<span style="font-size:.82rem;color:#555">'
-        f'The query is converted into a 384-dimensional dense vector using the BGE embedding model, '
+        f'The query is converted into a {dim}-dimensional dense vector using the {emb} embedding model, '
         f'enabling semantic similarity search against the knowledge base.</span>'
         f'</div>',
         unsafe_allow_html=True,
@@ -385,6 +388,7 @@ if query:
             ],
             "prompt": prompt,
             "model": model_choice,
+            "embedding": embedding_choice,
             "top_k": top_k,
             "t_retrieve": t_retrieve,
             "t_generate": t_generate,
