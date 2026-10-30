@@ -75,8 +75,8 @@ A context-aware intelligent trading assistant that combines an interactive backt
 | Market Data | yfinance | Free historical OHLCV data |
 | Indicators | pandas / numpy | EMA, RSI, MACD computed from scratch |
 | Charts | Plotly (subplots, per-panel legends) | Interactive, linked 5-chart layout |
-| Embedding (Option A) | BAAI/bge-small-en-v1.5 | 384-dim dense vectors, fast and light |
-| Embedding (Option B) | BAAI/bge-base-en-v1.5 | 768-dim dense vectors, higher quality |
+| Embedding (Default) | BAAI/bge-base-en-v1.5 | 768-dim dense vectors, best Recall@K in `eval_retrieval.py` |
+| Embedding (Option B) | BAAI/bge-small-en-v1.5 | 384-dim dense vectors, fast and light |
 | Embedding (Option C) | sentence-transformers/all-MiniLM-L6-v2 | 384-dim, classic baseline |
 | Vector Store | FAISS (IndexFlatL2) | Exact L2 nearest-neighbor search, pre-built per model |
 | Text Splitting | LangChain RecursiveCharacterTextSplitter | Chunk raw text (400 chars, 50 overlap) |
@@ -97,7 +97,7 @@ A context-aware intelligent trading assistant that combines an interactive backt
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/AlanY1an/elder-trading-copilot.git
+git clone https://github.com/djb0709/elder-trading-copilot.git
 cd elder-trading-copilot
 
 # 2. Create a virtual environment (recommended)
@@ -135,6 +135,8 @@ elder-trading-copilot/
 ├── rag.py                    # RAG pipeline: load docs, build/query FAISS, generate
 ├── components.py             # Shared UI components (sidebar header, about dialog)
 ├── build_index.py            # Pre-build FAISS indexes for all embedding models
+├── eval_retrieval.py         # Recall@K evaluation across embedding models
+├── clean_knowledge_base.py   # Knowledge base cleaning (redundant entries, PDF residue)
 ├── requirements.txt          # Python dependencies
 ├── .env.example              # Template for API keys
 ├── .streamlit/
@@ -143,11 +145,11 @@ elder-trading-copilot/
 │   ├── chatbot.py            # RAG Pipeline Explorer (step-by-step visualization)
 │   └── compare.py            # Pipeline Compare (side-by-side embedding/LLM/top-k)
 ├── data/
-│   ├── knowledge_base.csv    # 877 QA pairs from Elder's books and teachings
+│   ├── knowledge_base.csv    # 785 QA pairs from Elder's books and teachings
 │   ├── elder_new_high_new_low.txt   # Video lecture transcript (~5,400 chars)
 │   ├── elder_jpa.png         # Elder avatar for sidebar
 │   └── anime_edit.png        # Elder anime avatar for chatbot
-├── faiss_index/              # Default FAISS index (bge-small-en-v1.5)
+├── faiss_index/              # Default FAISS index (bge-base-en-v1.5)
 ├── faiss_index_bge-small-en-v1.5/
 ├── faiss_index_bge-base-en-v1.5/
 ├── faiss_index_all-MiniLM-L6-v2/
@@ -223,7 +225,7 @@ The context-aware design means the chatbot can explain why a specific parameter 
 
 ## Knowledge Base
 
-The knowledge base contains **877 QA pairs** plus supplementary text, drawn from three sources:
+The knowledge base contains **785 QA pairs** plus supplementary text, drawn from three sources:
 
 | Source | Entries | Description |
 |---|---|---|
