@@ -1,12 +1,12 @@
-"""
+﻿"""
 Retrieval evaluation: query the knowledge base with questions and measure
 Recall@K across embedding models and Top-K values.
 
 Method:
   - Corpus = all Answer texts from the knowledge base.
-  - Sample N questions; use each Question as the query.
+  - Use every Question in the knowledge base as a query (full set, no sampling).
   - Retrieve Top-K; a query counts as a hit if its paired Answer is returned.
-  - Metric: Recall@K = hits / sample size.
+  - Metric: Recall@K = hits / number of questions.
   - Querying answers with questions (rather than questions with questions)
     reflects real usage and avoids inflated scores from matching identical text.
 
@@ -17,7 +17,6 @@ Run:
 
 import csv
 import os
-import random
 import sys
 
 # Windows console defaults to cp1252; force UTF-8 output.
@@ -26,15 +25,27 @@ try:
 except Exception:
     pass
 
-from rag import DATA_DIR, EMBEDDING_MODELS, get_embedding_model
+from rag import DATA_DIR, EMBEDDING_MODELS
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEmbeddings
 
 KB_PATH = os.path.join(DATA_DIR, "knowledge_base.csv")
 
-SAMPLE_SIZE = 100          # number of questions to sample
 K_VALUES = [1, 3, 5, 10]   # Top-K values to evaluate
-SEED = 42                  # fixed seed for reproducibility
+
+# BGE v1.5 expects this instruction on the query side only (not on passages).
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
+
+def get_eval_embedding(model_name, query_prefix=None):
+    """Embedding model for evaluation; optionally prepend a query-side prefix."""
+    if query_prefix:
+        return HuggingFaceEmbeddings(
+            model_name=model_name,
+            query_encode_kwargs={"prompt": query_prefix},
+        )
+    return HuggingFaceEmbeddings(model_name=model_name)
 
 
 def load_qa_pairs():
@@ -50,9 +61,9 @@ def load_qa_pairs():
     return pairs
 
 
-def build_answer_index(answers, model_name):
+def build_answer_index(answers, model_name, query_prefix=None):
     """Build a FAISS index over Answer texts; keep the row id in metadata."""
-    embedding_model = get_embedding_model(model_name)
+    embedding_model = get_eval_embedding(model_name, query_prefix)
     docs = [
         Document(page_content=ans, metadata={"row": i})
         for i, ans in enumerate(answers)
@@ -76,32 +87,33 @@ def evaluate(vector_store, questions, target_answers, k_values):
 
 
 def main():
-    random.seed(SEED)
-
     pairs = load_qa_pairs()
     answers = [a for _, a in pairs]
     print(f"Total answers in knowledge base: {len(answers)}")
 
-    sample_idx = random.sample(range(len(pairs)), min(SAMPLE_SIZE, len(pairs)))
-    questions = [pairs[i][0] for i in sample_idx]
-    target_answers = [pairs[i][1] for i in sample_idx]
-    print(f"Sampled queries: {len(questions)} (seed={SEED})\n")
+    questions = [q for q, _ in pairs]
+    target_answers = answers
+    print(f"Queries: {len(questions)} (all questions)\n")
 
-    header = "Embedding model".ljust(24) + "".join(
+    header = "Embedding model".ljust(28) + "".join(
         f"R@{k}".rjust(9) for k in K_VALUES
     )
     print(header)
     print("-" * len(header))
 
     for key, model_name in EMBEDDING_MODELS.items():
-        vector_store = build_answer_index(answers, model_name)
-        recall = evaluate(vector_store, questions, target_answers, K_VALUES)
-        row = key.ljust(24) + "".join(
-            f"{recall[k] * 100:8.1f}%" for k in K_VALUES
-        )
-        print(row)
+        variants = [(key, None)]
+        if model_name.startswith("BAAI/bge"):
+            variants.append((key + " +prefix", BGE_QUERY_PREFIX))
+        for label, prefix in variants:
+            vector_store = build_answer_index(answers, model_name, prefix)
+            recall = evaluate(vector_store, questions, target_answers, K_VALUES)
+            row = label.ljust(28) + "".join(
+                f"{recall[k] * 100:8.1f}%" for k in K_VALUES
+            )
+            print(row)
 
-    print("\nR@K = share of sampled questions whose answer appears in the Top-K results.")
+    print("\nR@K = share of questions whose answer appears in the Top-K results.")
 
 
 if __name__ == "__main__":
